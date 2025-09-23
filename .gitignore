@@ -29,4 +29,5 @@ output/
 segmentation_results.csv
 */segmentation_results.csv
 
-
+# Old code/versions of this repo
+legacy/
