@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.coverage
+htmlcov/
+.eggs/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.DS_Store
+
+# Local artifacts
+*.sylls.json
+
+# Notebook / evaluation outputs
+output/
+segmentation_results.csv
+*/segmentation_results.csv
+
+

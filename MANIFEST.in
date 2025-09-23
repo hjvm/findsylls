@@ -1,0 +1,19 @@
+include README.md
+include LICENSE
+recursive-exclude test_samples *
+recursive-exclude tests *
+recursive-exclude legacy *
+include README.md
+include LICENSE
+
+# Package source (src layout)
+recursive-include src/findsylls *.py
+
+# Sample audio (optional runtime examples)
+recursive-include test_samples *.wav *.flac
+
+# Exclude test suite & legacy code from sdist
+prune tests
+prune findsylls_old
+prune old
+prune legacy

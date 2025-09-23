@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "findsylls"
+version = "0.1.1"
+description = "Unsupervised syllable segmentation and evaluation toolkit for speech audio"
+readme = "README.md"
+dynamic = []
+authors = [
+  { name = "Héctor Javier" }
+]
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+keywords = ["speech", "syllable", "segmentation", "audio", "phonetics", "prosody", "unsupervised"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Multimedia :: Sound/Audio :: Analysis"
+]
+dependencies = [
+  "numpy>=1.22",
+  "scipy>=1.9",
+  "librosa>=0.10",
+  "pandas>=1.5",
+  "soundfile>=0.12",
+  "matplotlib>=3.7",
+  "textgrid>=1.5",
+  "findpeaks>=2.5",
+  "gammatone>=1.0.0",
+]
+
+[project.optional-dependencies]
+viz = ["matplotlib", "seaborn"]
+dev = [
+  "pytest",
+  "pytest-cov",
+  "ruff",
+  "black",
+  "mypy"
+]
+
+[project.urls]
+Homepage = "https://github.com/hjvm/findsylls"
+Issues = "https://github.com/hjvm/findsylls/issues"
+
+[project.scripts]
+findsylls = "findsylls.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["findsylls*"]
+
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+line-length = 100
+select = ["E","F","I"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+python_files = ["test_*.py"]

@@ -1,0 +1,53 @@
+############################################################
+# findsylls runtime requirements
+#
+# This file enumerates the packages needed to run the core
+# library, plus (commented / grouped) optional and developer
+# dependencies. It is derived from pyproject.toml plus the
+# imports used in the notebook and optional audio backends.
+#
+# To install ONLY the core runtime:
+#   pip install -r requirements.txt
+#
+# To install core + optional backends + notebook + dev tools:
+#   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt.dev  (if you later split dev deps)
+# or uncomment the sections you need below.
+############################################################
+
+########## Core runtime (required) ##########
+numpy>=1.22
+scipy>=1.9
+librosa>=0.10
+pandas>=1.5
+soundfile>=0.12
+matplotlib>=3.7
+textgrid>=1.5
+findpeaks>=2.5
+gammatone>=1.0.0
+
+########## Optional audio / performance backends ##########
+# torch provides an optimized tensor backend; torchaudio enables fast I/O.
+# Not strictly required because the loader falls back to soundfile/librosa.
+# If you need these, UNCOMMENT the next two lines (and choose versions
+# compatible with your platform + CUDA if desired):
+# torch>=2.0.0
+# torchaudio>=2.0.0
+
+########## Notebook / plotting enhancements ##########
+# Used in the example & analysis notebooks.
+seaborn>=0.12
+
+########## Development / QA (optional) ##########
+# Uncomment if you are running tests, style, or type checks locally.
+# pytest
+# pytest-cov
+# ruff
+# black
+# mypy
+
+########## Notes ##########
+# Transitive dependencies (audioread, pooch, numba, etc.) are pulled in
+# automatically via the primary packages above.
+# If you experience issues with librosa + numba on Apple Silicon, ensure
+# you have a recent pip & wheel and possibly pin numba to a compatible version.
