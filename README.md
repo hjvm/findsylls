@@ -1,5 +1,10 @@
 # findsylls
 
+[![PyPI version](https://img.shields.io/pypi/v/findsylls.svg)](https://pypi.org/project/findsylls/)
+[![Python versions](https://img.shields.io/pypi/pyversions/findsylls.svg)](https://pypi.org/project/findsylls/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-experimental-orange.svg)](#roadmap--todo)
+
 Unsupervised syllable(-like) segmentation & evaluation toolkit for speech audio. Extract amplitude / modulation envelopes, segment into candidate syllables, and (optionally) evaluate versus Praat TextGrid annotations at nuclei, syllable boundary/span, and word boundary/span levels.
 
 ## Features
@@ -10,16 +15,19 @@ Unsupervised syllable(-like) segmentation & evaluation toolkit for speech audio.
 - Batch pipeline utilities + fuzzy filename matching (`.wav` ↔ `.TextGrid`).
 - Optional plotting layer for qualitative inspection.
 
-## Install (Local)
+## Install
 ```bash
-# Core install
+# Core (from PyPI)
 pip install findsylls
 
-# Or from a local clone (editable for development)
+# Local clone (editable development)
 pip install -e .[dev]
 
-# With plotting extras
+# With plotting / visualization extras
 pip install 'findsylls[viz]'
+
+# Install from Git (exact tag)
+pip install 'git+https://github.com/hjvm/findsylls.git@v0.1.1'
 ```
 
 ## Quick Start
@@ -83,6 +91,21 @@ Indices are 0-based (as provided by the `textgrid` library). Pass `None` to skip
 - `EVAL_METHODS` ordering drives flatten/aggregate loops; include new metric keys there if extending.
 - Substitutions matter for span metrics; remain zero for nuclei/boundary F1 semantics.
 
+## Performance Notes
+- Audio loading prefers `torchaudio` when present (install separately) else falls back to `soundfile` / `librosa`.
+- Envelope computation is vectorized (NumPy); `theta` method includes a gammatone filterbank which can be slower—use SBS or Hilbert for faster prototyping.
+- For large corpora, pre‑sample or cap duration (see example notebook) to iterate quickly.
+- Parallelization: current API processes files sequentially; external parallel mapping (e.g., `joblib` or `multiprocessing`) around `segment_audio` is safe if you don’t mutate globals.
+
+## FAQ
+**Why are boundary/spans columns missing?**  If a tier index is `None` or produces no intervals, those metrics are skipped intentionally.
+
+**How do I add my own envelope?**  Implement a function returning `(envelope, times)` and register it in `envelope/dispatch.py`.
+
+**Can I stream long recordings?**  Not yet; current design assumes full in‑memory arrays. A streaming envelope interface is on the roadmap.
+
+**Why do I get 0 TP for nuclei?**  Likely vowel set mismatch; confirm phone tier labels are standard (ARPABET or simple vowels) and consider adjusting `SYLLABIC`.
+
 ## Roadmap / TODO
 - Implement `generate_syllable_intervals` (placeholder now).
 - Additional segmentation algorithms (Mermelstein, oscillator-based).
@@ -96,7 +119,24 @@ The previous exploratory/monolithic implementations are retained under a `legacy
 MIT. See `LICENSE`.
 
 ## Citation
-(Provide a citation once there is a paper / preprint.)
+If you use this software in academic work, please cite the repository until a formal paper/preprint is available. A `CITATION.cff` file will appear in a future release.
+
+Plain text:
+```
+Vázquez Martínez, Héctor Javier. (2025). findsylls: Unsupervised syllable segmentation & evaluation toolkit (Version 0.1.1) [Computer software]. https://github.com/hjvm/findsylls
+```
+
+BibTeX:
+```bibtex
+@software{findsylls,
+    author = {Vázquez Martínez, Héctor Javier},
+    title = {findsylls: Unsupervised syllable segmentation & evaluation toolkit},
+    year = {2025},
+    version = {0.1.1},
+    url = {https://github.com/hjvm/findsylls},
+    license = {MIT}
+}
+```
 
 ---
 For development guidelines see `.github/copilot-instructions.md`.

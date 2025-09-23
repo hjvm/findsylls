@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: findsylls: Unsupervised syllable segmentation & evaluation toolkit
+message: If you use this software, please cite it using the metadata below.
+authors:
+  - given-names: Héctor Javier
+    family-names: Vázquez Martínez
+version: 0.1.1
+license: MIT
+date-released: 2025-09-23
+repository-code: https://github.com/hjvm/findsylls
+keywords:
+  - speech
+  - syllable
+  - segmentation
+  - audio
+  - phonetics
+  - prosody
+  - unsupervised
+preferred-citation:
+  type: software
+  title: findsylls: Unsupervised syllable segmentation & evaluation toolkit
+  authors:
+    - given-names: Héctor Javier
+      family-names: Vázquez Martínez
+  year: 2025
+  version: 0.1.1
+  repository-code: https://github.com/hjvm/findsylls
