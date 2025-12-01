@@ -8,9 +8,21 @@ from ..envelope.dispatch import get_amplitude_envelope
 from ..parsing.textgrid_parser import parse_textgrid_intervals
 
 def safe_parse(val):
+    """Parse stringified lists, handling numpy types."""
     if isinstance(val, str):
-        try: return literal_eval(val)
-        except: return []
+        # First, try direct literal_eval (fastest, works for clean data)
+        try:
+            return literal_eval(val)
+        except (ValueError, SyntaxError):
+            # If that fails, try cleaning numpy type wrappers
+            try:
+                import re
+                # Match np.float64(number) or np.int64(number) etc and extract just the number
+                val_cleaned = re.sub(r'np\.\w+\(([-\d.e]+)\)', r'\1', val)
+                return literal_eval(val_cleaned)
+            except Exception:
+                # If all parsing fails, return empty list
+                return []
     return val
 
 def plot_segmentation_result(df: pd.DataFrame, file_id: str, envelope_fn: str = "sbs", envelope_kwargs: dict = None, figsize: Tuple[int, int] = (15, 9), show: bool = True, phone_tier: Optional[int] = None, syll_tier: Optional[int] = None, word_tier: Optional[int] = None):

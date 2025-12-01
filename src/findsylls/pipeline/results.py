@@ -19,11 +19,17 @@ def flatten_results(results: List[dict]) -> pd.DataFrame:
 
 def aggregate_results(results_df: pd.DataFrame, dataset_name: str) -> pd.DataFrame:
     summary = results_df.groupby("eval_method").aggregate({"TP": "sum", "Ins": "sum", "Del": "sum", "Sub": "sum"})
-    total = summary.sum(axis=1)
+    # Reference total (ground truth): TP + Del + Sub (excludes Insertions)
+    total = summary["TP"] + summary["Del"] + summary["Sub"]
     precision = summary["TP"] / (summary["TP"] + summary["Ins"] + summary["Sub"])
-    recall = summary["TP"] / (summary["TP"] + summary["Del"] + summary["Sub"])
+    recall = summary["TP"] / total
     f1 = 2 * (precision * recall) / (precision + recall)
-    summary = summary.div(total, axis=0)
+    # Normalize TP, Del, Sub by reference total (these sum to 1.0)
+    # Ins normalized separately as it's not part of reference
+    summary["TP"] = summary["TP"] / total
+    summary["Del"] = summary["Del"] / total
+    summary["Sub"] = summary["Sub"] / total
+    summary["Ins"] = summary["Ins"] / total  # Shown as proportion of reference
     summary["TER"] = summary["Ins"] + summary["Del"] + summary["Sub"]
     summary["Total"] = total
     summary["Precision"] = precision

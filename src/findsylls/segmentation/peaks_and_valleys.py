@@ -3,11 +3,24 @@ from findpeaks.peakdetect import peakdetect
 from typing import List, Tuple
 
 def segment_peaks_and_valleys(envelope: np.ndarray, times: np.ndarray, **kwargs) -> List[Tuple[float, float, float]]:
-    lookahead = kwargs.get("lookahead", 1)
     delta = kwargs.get("delta", 0.01)
     min_syllable_dur = kwargs.get("min_syllable_dur", 0.05)
     onset = kwargs.get("onset", 0.05)
     merge_tol = kwargs.get("merge_valley_tol", 0.05)
+
+    # Auto-compute lookahead if not explicitly provided
+    if 'lookahead' in kwargs:
+        # Use explicit value if provided (for testing/comparison)
+        lookahead = kwargs['lookahead']
+    else:
+        # Calculate lookahead based on min_syllable_dur.
+        # Use half the min duration to avoid finding multiple peaks per syllable.
+        lookahead_time = min_syllable_dur / 2.0  # e.g., 0.025s for default 0.05s
+        
+        # Convert time to samples based on envelope sampling rate
+        dt = times[1] - times[0] if len(times) > 1 else 0.01  # Time per envelope sample
+        lookahead = max(1, int(lookahead_time / dt))
+
     raw_peaks, raw_valleys = peakdetect(envelope, lookahead=lookahead, delta=delta, x_axis=times)
     peaks = np.array([p[0] for p in raw_peaks])
     valleys_times = np.array([v[0] for v in raw_valleys])
