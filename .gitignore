@@ -26,8 +26,13 @@ htmlcov/
 
 # Notebook / evaluation outputs
 output/
+notebooks/
 segmentation_results.csv
 */segmentation_results.csv
 
+# Development docs
+docs/dev/
+
 # Old code/versions of this repo
 legacy/
+models/

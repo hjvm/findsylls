@@ -43,13 +43,20 @@ def load_audio(audio_file: str | Path, samplerate: int = 16000):
         raise FileNotFoundError(path)
 
     if _HAVE_TORCHAUDIO:
-        wav, sr = torchaudio.load(str(path))  # type: ignore
-        if wav.ndim > 1:
-            wav = wav.mean(0, keepdim=False)
-        wav = wav.numpy()
+        try:
+            wav, sr = torchaudio.load(str(path))  # type: ignore
+            if wav.ndim > 1:
+                wav = wav.mean(0, keepdim=False)
+            wav = wav.numpy()
+        except Exception:
+            # Fall back to soundfile/librosa if torchaudio fails (e.g., missing torchcodec)
+            wav = None
+            sr = None
     else:
         wav = None
         sr = None
+    
+    if wav is None:
         if sf is not None:
             wav, sr = sf.read(str(path))
             if wav.ndim > 1:

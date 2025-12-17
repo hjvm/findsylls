@@ -1,20 +1,35 @@
 import os, pandas as pd
 from typing import List
-from ..config.constants import EVAL_METHODS
 
 def flatten_results(results: List[dict]) -> pd.DataFrame:
+    """Flatten evaluation results into a tidy DataFrame.
+    
+    Dynamically detects all evaluation keys in the results (e.g., 'nuclei',
+    'syllable_boundaries', 'word_spans', etc.) rather than relying on a
+    fixed EVAL_METHODS constant.
+    """
     flattened = []
     for res in results:
-        flat = {"audio_file": res.get("audio_file"), "tg_file": res.get("tg_file"), "envelope": res.get("envelope"), "segmentation": res.get("segmentation")}
-        for method in EVAL_METHODS:
-            row = flat.copy(); eval_res = res.get(method, None)
-            if eval_res is None: continue
-            row["eval_method"] = method
+        # Copy metadata fields (both standard and any extras like 'dataset', 'method', etc.)
+        metadata_keys = {"audio_file", "tg_file", "envelope", "segmentation", "dataset", "method", "method_type"}
+        flat = {k: res.get(k) for k in metadata_keys if k in res}
+        
+        # Iterate over all keys in result that contain evaluation data
+        # (skip metadata keys and look for dict values containing metrics)
+        for key, eval_res in res.items():
+            if key in metadata_keys or eval_res is None:
+                continue
+            if not isinstance(eval_res, dict):
+                continue
+            # This is an evaluation result (e.g., nuclei, syllable_boundaries, etc.)
+            row = flat.copy()
+            row["eval_method"] = key
             for k, v in eval_res.items():
                 row[k] = v
             flattened.append(row)
     df = pd.DataFrame(flattened)
-    df["file_id"] = df["audio_file"].apply(lambda p: os.path.splitext(os.path.basename(p))[0])
+    if not df.empty and "audio_file" in df.columns:
+        df["file_id"] = df["audio_file"].apply(lambda p: os.path.splitext(os.path.basename(p))[0])
     return df
 
 def aggregate_results(results_df: pd.DataFrame, dataset_name: str) -> pd.DataFrame:

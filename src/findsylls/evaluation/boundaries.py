@@ -2,15 +2,17 @@ from typing import List, Tuple, Dict
 from ..config.constants import DEFAULT_TOLERANCE
 
 def spans_to_boundaries(spans: List[Tuple[float, float]], tolerance: float = 0) -> List[float]:
+    """Extract unique boundary times from a list of (start, end) spans.
+    
+    Note: This function NO LONGER merges boundaries within tolerance.
+    Merging/matching is handled by the evaluation function, not here.
+    We simply extract all unique start and end times from the spans.
+    """
     if not spans:
         return []
-    boundaries = [spans[0][0]]
+    boundaries = []
     for start, end in spans:
-        prev = boundaries[-1]
-        if abs(start - prev) <= tolerance:
-            boundaries[-1] = (start + prev) / 2
-        else:
-            boundaries.append(start)
+        boundaries.append(start)
         boundaries.append(end)
     return sorted(set(boundaries))
 

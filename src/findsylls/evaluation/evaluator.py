@@ -4,9 +4,8 @@ This module provides two entry points:
 
 evaluate_syllable_segmentation  (legacy style) – works with a combined
     syllable segmentation returning peaks + (start, end) spans.
-evaluate_segmentation (current pipeline) – evaluates nuclei, syllable and
-    word boundaries/spans independently, depending on which tier indices are
-    supplied.
+evaluate_segmentation (current pipeline) – evaluates nuclei and boundaries/spans
+    against any specified tiers. All tiers are specified via the `tiers` dict.
 
 Notes on data structures:
     * extract_syllable_intervals returns a dict: {"intervals": [...], "deleted": [...]}.
@@ -21,9 +20,10 @@ Notes on data structures:
     * A tier index of -1 for syllables triggers (future) synthetic syllable
         generation (currently returns an empty list in the parser stub, so the
         evaluation will be skipped gracefully).
+    * The 'phone' tier is used for nuclei evaluation (vocalic intervals).
 
 Tier indexing is zero‑based; given a TextGrid with tiers [words, syllables, phones]
-you should pass: word_tier=0, syllable_tier=1, phone_tier=2.
+you should pass: tiers={'phone': 2, 'syllable': 1, 'word': 0}.
 """
 
 from typing import List, Tuple, Dict, Union, Optional
@@ -99,50 +99,89 @@ def evaluate_segmentation(
     phone_tier: Optional[int] = None,
     syllable_tier: Optional[int] = None,
     word_tier: Optional[int] = None,
+    tiers: Optional[Dict[str, int]] = None,
     tolerance: float = 0.05,
 ) -> Dict:
     """Evaluate a predicted segmentation against TextGrid references.
 
-    Parameters mirror those in the legacy helper; tier indices are optional
-    and any omitted tier simply results in that evaluation category = None.
+    Parameters
+    ----------
+    peaks : list of float
+        Predicted nucleus times (for nuclei evaluation).
+    spans : list of (start, end)
+        Predicted segment spans (for boundary/span evaluation).
+    textgrid_path : str
+        Path to TextGrid file.
+    phone_tier : int, optional
+        Zero-based phone tier index (legacy parameter for backward compatibility).
+        Prefer using tiers={'phone': index} instead.
+    syllable_tier : int, optional
+        Zero-based syllable tier index (legacy parameter for backward compatibility).
+        Prefer using tiers={'syllable': index} instead.
+    word_tier : int, optional
+        Zero-based word tier index (legacy parameter for backward compatibility).
+        Prefer using tiers={'word': index} instead.
+    tiers : dict, optional
+        Mapping of tier names to indices, e.g., {'phone': 2, 'syllable': 1, 'word': 0}.
+        This is the preferred way to specify tiers. The 'phone' tier is used for
+        nuclei evaluation. All other tiers generate '{name}_boundaries' and
+        '{name}_spans' evaluation keys.
+    tolerance : float
+        Boundary matching tolerance in seconds.
+
+    Returns
+    -------
+    dict
+        Keys include 'nuclei' (if phone tier specified) and dynamically generated
+        keys like '{tier_name}_boundaries' and '{tier_name}_spans' for each tier.
     """
     result: Dict[str, Optional[Dict]] = {}
 
-    # Nuclei (phone tier required)
-    if phone_tier is None:
+    # Collect all tiers (merging legacy params with new tiers dict)
+    all_tiers = {}
+    if phone_tier is not None:
+        all_tiers['phone'] = phone_tier
+    if syllable_tier is not None:
+        all_tiers['syllable'] = syllable_tier
+    if word_tier is not None:
+        all_tiers['word'] = word_tier
+    if tiers is not None:
+        all_tiers.update(tiers)
+
+    # Extract phone tier for nuclei evaluation and synthetic syllable generation
+    phone_tier_index = all_tiers.get('phone')
+
+    # Nuclei evaluation (requires phone tier)
+    if phone_tier_index is None:
         nuclei_eval = None
     else:
-        vocalic_intervals = extract_vocalic_intervals(textgrid_path, phone_tier)
+        vocalic_intervals = extract_vocalic_intervals(textgrid_path, phone_tier_index)
         nuclei_eval = evaluate_nuclei(peaks, vocalic_intervals, window=tolerance)
     result["nuclei"] = nuclei_eval
 
-    # Syllable boundaries / spans
-    if syllable_tier is None:
-        reference_syllables = None
-    elif syllable_tier == -1:
-        reference_syllables = generate_syllable_intervals(textgrid_path, phone_tier)
-    else:
-        reference_syllables = extract_syllable_intervals(textgrid_path, syllable_tier)
-    if _is_empty_ref(reference_syllables):
-        syll_boundary_eval = None
-        syll_span_eval = None
-    else:
-        syll_boundary_eval = evaluate_syllable_boundaries(spans, reference_syllables, tolerance=tolerance)
-        syll_span_eval = evaluate_syllable_spans(spans, reference_syllables, tolerance=tolerance)
-    result["syll_boundaries"] = syll_boundary_eval
-    result["syll_spans"] = syll_span_eval
+    # Evaluate boundaries and spans for each specified tier
+    for tier_name, tier_index in all_tiers.items():
+        if tier_name == 'phone':
+            # Phone tier is only used for nuclei, skip boundary/span evaluation
+            continue
+            
+        if tier_index == -1 and tier_name == 'syllable':
+            # Special case: generate synthetic syllables (requires phone tier)
+            if phone_tier_index is None:
+                reference_intervals = None
+            else:
+                reference_intervals = generate_syllable_intervals(textgrid_path, phone_tier_index)
+        else:
+            reference_intervals = extract_syllable_intervals(textgrid_path, tier_index)
+        
+        if _is_empty_ref(reference_intervals):
+            boundary_eval = None
+            span_eval = None
+        else:
+            boundary_eval = evaluate_syllable_boundaries(spans, reference_intervals, tolerance=tolerance)
+            span_eval = evaluate_syllable_spans(spans, reference_intervals, tolerance=tolerance)
+        
+        result[f"{tier_name}_boundaries"] = boundary_eval
+        result[f"{tier_name}_spans"] = span_eval
 
-    # Word boundaries / spans
-    if word_tier is None:
-        reference_words = None
-    else:
-        reference_words = extract_syllable_intervals(textgrid_path, word_tier)
-    if _is_empty_ref(reference_words):
-        word_boundary_eval = None
-        word_span_eval = None
-    else:
-        word_boundary_eval = evaluate_syllable_boundaries(spans, reference_words, tolerance=tolerance)
-        word_span_eval = evaluate_syllable_spans(spans, reference_words, tolerance=tolerance)
-    result["word_boundaries"] = word_boundary_eval
-    result["word_spans"] = word_span_eval
     return result

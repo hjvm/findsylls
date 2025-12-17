@@ -1,10 +1,10 @@
-## Evaluation methods.
-EVAL_METHODS = [
-    "nuclei",
-    "syll_boundaries",
-    "syll_spans",
-    "word_boundaries",
-    "word_spans",
+## Evaluation method types (used for validation and filtering).
+# Note: Actual evaluation keys are generated dynamically based on tier names,
+# e.g., "syllable_boundaries", "word_spans", "phone_boundaries", etc.
+EVAL_METHOD_TYPES = [
+    "nuclei",      # Always uses phone tier for vocalic intervals
+    "boundaries",  # Generic boundary evaluation (works on any tier)
+    "spans",       # Generic span evaluation (works on any tier)
 ]
 
 ## Default tolerance for evaluation.

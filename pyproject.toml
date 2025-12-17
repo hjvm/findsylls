@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "findsylls"
-version = "0.2.0"
-description = "Unsupervised syllable segmentation and evaluation toolkit for speech audio"
+version = "1.0.0"
+description = "Unsupervised syllable segmentation, evaluation, and embedding extraction toolkit for speech audio"
 readme = "README.md"
 dynamic = []
 authors = [
@@ -30,10 +30,32 @@ dependencies = [
   "textgrid>=1.5",
   "findpeaks>=2.5",
   "gammatone>=1.0.0",
+  "joblib>=1.3",
+  "tqdm>=4.65",
 ]
 
 [project.optional-dependencies]
 viz = ["matplotlib", "seaborn"]
+end2end = [
+  "sylber>=0.1.2",  # Neural end-to-end syllable segmentation
+]
+storage = [
+  "h5py>=3.8",  # HDF5 storage for large embedding datasets
+]
+embedding = [
+  "torch>=2.0",  # Required for neural embedders (VG-HuBERT, etc.)
+  "torchaudio>=2.0",
+  "transformers>=4.30",
+]
+all = [
+  "matplotlib",
+  "seaborn",
+  "sylber>=0.1.2",
+  "h5py>=3.8",
+  "torch>=2.0",
+  "torchaudio>=2.0",
+  "transformers>=4.30",
+]
 dev = [
   "pytest",
   "pytest-cov",
