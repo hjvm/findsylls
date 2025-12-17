@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2024-12-17
+
+### Fixed
+- **`embed_corpus` export**: Fixed missing export of `embed_corpus` function from `embedding.__init__.py`, which caused import failure in top-level `findsylls.__init__.py`. The function was fully implemented but not included in `__all__`, preventing batch corpus processing functionality from being accessible.
+
 ## [1.0.0] - 2024-12-17
 
 **Major release with syllable embedding pipeline (Phases 1-3) and validation against legacy implementation.**

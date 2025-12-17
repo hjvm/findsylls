@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "findsylls"
-version = "1.0.0"
+version = "1.0.1"
 description = "Unsupervised syllable segmentation, evaluation, and embedding extraction toolkit for speech audio"
 readme = "README.md"
 dynamic = []

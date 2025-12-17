@@ -9,21 +9,29 @@ Two orthogonal dimensions:
 2. Pooling (frame→syllable): mean, ONC template, max, etc.
 
 Usage:
-    >>> from findsylls.embedding import embed_audio
+    >>> from findsylls.embedding import embed_audio, embed_corpus
+    >>> # Single file
     >>> embeddings, metadata = embed_audio(
     ...     'audio.wav',
     ...     segmentation='sylber',
     ...     embedder='sylber',
     ...     pooling='mean'
     ... )
+    >>> # Multiple files
+    >>> results = embed_corpus(
+    ...     ['audio1.wav', 'audio2.wav'],
+    ...     embedder='mfcc',
+    ...     n_jobs=4
+    ... )
 """
 
-from .pipeline import embed_audio
+from .pipeline import embed_audio, embed_corpus
 from .extractors import extract_features
 from .pooling import pool_syllables
 
 __all__ = [
     'embed_audio',
+    'embed_corpus',
     'extract_features',
     'pool_syllables',
 ]
