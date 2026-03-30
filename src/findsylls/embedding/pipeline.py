@@ -21,13 +21,13 @@ from .pooling import pool_syllables
 def embed_audio(
     audio_path: str,
     segmentation: str = 'sylber',
-    embedder: str = 'sylber',
+    features: str = 'sylber',
     pooling: str = 'mean',
     sr: int = 16000,
     layer: Optional[int] = None,
     device: str = 'auto',
     segmentation_kwargs: Optional[Dict[str, Any]] = None,
-    embedder_kwargs: Optional[Dict[str, Any]] = None,
+    feature_kwargs: Optional[Dict[str, Any]] = None,
     pooling_kwargs: Optional[Dict[str, Any]] = None,
     return_metadata: bool = True
 ) -> Tuple[np.ndarray, Optional[Dict[str, Any]]]:
@@ -39,16 +39,16 @@ def embed_audio(
     Args:
         audio_path: Path to audio file
         segmentation: Segmentation method (any from Methods 1-11)
-            - 'peaks_and_valleys': Classical envelope-based (default for envelope methods)
+            - 'peakdetect': Classical envelope-based (default for envelope methods)
             - 'sylber': Sylber end-to-end model
             - 'vg_hubert': VG-HuBERT model (future)
             - etc.
-        embedder: Feature extraction method
+        features: Feature extraction method
             - 'sylber': Sylber model (768-dim, ~50 fps)
             - 'vg_hubert': VG-HuBERT model (768-dim, ~50 fps)
-                          Requires embedder_kwargs={'model_path': '/path/to/vg-hubert_3'}
+                          Requires feature_kwargs={'model_path': '/path/to/vg-hubert_3'}
             - 'mfcc': Mel-frequency cepstral coefficients (13-dim, ~100 fps)
-                      Use embedder_kwargs={'include_delta': True, 'include_delta_delta': True}
+                      Use feature_kwargs={'include_delta': True, 'include_delta_delta': True}
                       for delta features (39-dim = 13 + 13 + 13)
             - 'melspec': Mel-spectrogram (80-dim, ~100 fps)
         pooling: Syllable pooling method
@@ -60,7 +60,7 @@ def embed_audio(
         layer: Layer index for neural models (model-specific defaults if None)
         device: Device for neural models: 'auto', 'cuda', 'cpu'
         segmentation_kwargs: Additional arguments for segmentation
-        embedder_kwargs: Additional arguments for feature extraction
+        feature_kwargs: Additional arguments for feature extraction
         pooling_kwargs: Additional arguments for pooling
         return_metadata: If True, return (embeddings, metadata) tuple
                         If False, return only embeddings
@@ -77,7 +77,7 @@ def embed_audio(
         >>> embeddings, meta = embed_audio(
         ...     'audio.wav',
         ...     segmentation='sylber',
-        ...     embedder='sylber',
+        ...     features='sylber',
         ...     pooling='mean'
         ... )
         >>> print(embeddings.shape)  # (num_syllables, 768)
@@ -85,37 +85,37 @@ def embed_audio(
     """
     # Handle None kwargs
     segmentation_kwargs = segmentation_kwargs or {}
-    embedder_kwargs = embedder_kwargs or {}
+    feature_kwargs = feature_kwargs or {}
     pooling_kwargs = pooling_kwargs or {}
     
     # Step 1: Load audio
     audio, actual_sr = load_audio(audio_path, samplerate=sr)
     duration = len(audio) / actual_sr
     
-    # Check if we can use embedder-native segmentation (e.g., Sylber provides peaks)
-    use_embedder_segments = (embedder == 'sylber' and pooling == 'onc')
+    # Check if we can use feature-native segmentation (e.g., Sylber provides peaks)
+    use_feature_segments = (features == 'sylber' and pooling == 'onc')
     
-    if use_embedder_segments:
-        # Step 2+3 combined: Extract features AND get segments with peaks from embedder
+    if use_feature_segments:
+        # Step 2+3 combined: Extract features AND get segments with peaks from feature extractor
         # Warn user that peak detection is additional computation
         import warnings
         warnings.warn(
-            "ONC pooling with embedder='sylber' detects peaks using cosine similarity "
+            "ONC pooling with features='sylber' detects peaks using cosine similarity "
             "between frames. While this is native to Sylber's representation space, "
             "Sylber was not explicitly trained for peak detection. Peaks are inferred "
             "as the frames with maximum similarity to neighbors within each segment.",
             UserWarning
         )
         
-        features, times, syllables = extract_features(
+        frame_features, times, syllables = extract_features(
             audio,
             sr=actual_sr,
-            method=embedder,
+            method=features,
             layer=layer,
             device=device,
             return_times=True,
             return_segments=True,
-            **embedder_kwargs
+            **feature_kwargs
         )
     else:
         # Step 2: Segment into syllables using separate segmentation method
@@ -143,31 +143,31 @@ def embed_audio(
         )
         
         # Warn if ONC pooling is requested with other segmenters that don't provide peaks
-        if pooling == 'onc' and segmentation not in ['sylber', 'peaks_and_valleys']:
+        if pooling == 'onc' and segmentation not in ['sylber', 'peakdetect']:
             import warnings
             warnings.warn(
-                f"ONC pooling requested with segmentation='{segmentation}' + embedder='{embedder}'. "
+                f"ONC pooling requested with segmentation='{segmentation}' + features='{features}'. "
                 f"Note: segmentation='{segmentation}' does not detect acoustic peaks (uses midpoint "
                 f"as proxy), which may not align with phonetic nuclei. For peak-based segmentation, "
-                f"use segmentation='peaks_and_valleys' (envelope peaks) or segmentation='sylber' "
+                f"use segmentation='peakdetect' (envelope peaks) or segmentation='sylber' "
                 f"(cosine similarity peaks).",
                 UserWarning
             )
         
         # Step 3: Extract frame-level features
-        features, times = extract_features(
+        frame_features, times = extract_features(
             audio,
             sr=actual_sr,
-            method=embedder,
+            method=features,
             layer=layer,
             device=device,
             return_times=True,
-            **embedder_kwargs
+            **feature_kwargs
         )
     
     # Step 4: Pool frames into syllable embeddings
     # Calculate hop_length for accurate frame timing
-    num_frames = features.shape[0]
+    num_frames = frame_features.shape[0]
     if num_frames > 1:
         # Estimate hop_length from times
         avg_frame_time = times[-1] / (num_frames - 1)
@@ -177,7 +177,7 @@ def embed_audio(
         hop_length = 160  # 10ms at 16kHz
     
     embeddings = pool_syllables(
-        features,
+        frame_features,
         syllables,
         sr=actual_sr,
         method=pooling,
@@ -200,7 +200,7 @@ def embed_audio(
             
             # Method information
             'segmentation_method': segmentation,
-            'embedder': embedder,
+            'features': features,
             'pooling': pooling,
             'layer': layer,
             
@@ -211,8 +211,14 @@ def embed_audio(
             
             # Timestamps
             'created_at': datetime.now().isoformat(),
-            'findsylls_version': '0.1.0',  # TODO: get from package metadata
         }
+        
+        # Add version info if available
+        try:
+            from importlib.metadata import version
+            metadata['findsylls_version'] = version('findsylls')
+        except Exception:
+            metadata['findsylls_version'] = 'unknown'
         
         return embeddings, metadata
     else:
@@ -223,7 +229,7 @@ def embed_audio(
 def embed_audio_simple(
     audio_path: str,
     segmentation: str = 'sylber',
-    embedder: str = 'sylber',
+    features: str = 'sylber',
     pooling: str = 'mean',
     **kwargs
 ) -> np.ndarray:
@@ -233,7 +239,7 @@ def embed_audio_simple(
     Args:
         audio_path: Path to audio file
         segmentation: Segmentation method
-        embedder: Feature extraction method
+        features: Feature extraction method
         pooling: Pooling method
         **kwargs: Additional arguments passed to embed_audio
         
@@ -243,7 +249,7 @@ def embed_audio_simple(
     embeddings, _ = embed_audio(
         audio_path,
         segmentation=segmentation,
-        embedder=embedder,
+        features=features,
         pooling=pooling,
         return_metadata=False,
         **kwargs
@@ -254,13 +260,13 @@ def embed_audio_simple(
 def embed_corpus(
     audio_files: Union[List[str], List[Path]],
     segmentation: str = 'sylber',
-    embedder: str = 'sylber',
+    features: str = 'sylber',
     pooling: str = 'mean',
     sr: int = 16000,
     layer: Optional[int] = None,
     device: str = 'auto',
     segmentation_kwargs: Optional[Dict[str, Any]] = None,
-    embedder_kwargs: Optional[Dict[str, Any]] = None,
+    feature_kwargs: Optional[Dict[str, Any]] = None,
     pooling_kwargs: Optional[Dict[str, Any]] = None,
     n_jobs: int = 1,
     verbose: bool = True,
@@ -278,13 +284,13 @@ def embed_corpus(
     Args:
         audio_files: List of paths to audio files
         segmentation: Segmentation method (see embed_audio)
-        embedder: Feature extraction method (see embed_audio)
+        features: Feature extraction method (see embed_audio)
         pooling: Pooling method (see embed_audio)
         sr: Target sample rate (default: 16000)
         layer: Layer index for neural models
         device: Device for neural models: 'auto', 'cuda', 'cpu'
         segmentation_kwargs: Additional arguments for segmentation
-        embedder_kwargs: Additional arguments for feature extraction
+        feature_kwargs: Additional arguments for feature extraction
         pooling_kwargs: Additional arguments for pooling
         n_jobs: Number of parallel jobs (-1 = all CPUs, 1 = sequential)
         verbose: Show progress bar
@@ -302,7 +308,7 @@ def embed_corpus(
         >>> audio_files = ['audio1.wav', 'audio2.wav', 'audio3.wav']
         >>> results = embed_corpus(
         ...     audio_files,
-        ...     embedder='mfcc',
+        ...     features='mfcc',
         ...     pooling='mean',
         ...     n_jobs=4
         ... )
@@ -320,11 +326,16 @@ def embed_corpus(
     audio_files = [str(Path(f)) for f in audio_files]
     
     segmentation_kwargs = segmentation_kwargs or {}
-    embedder_kwargs = embedder_kwargs or {}
+    feature_kwargs = feature_kwargs or {}
     pooling_kwargs = pooling_kwargs or {}
     
     def process_single_file(audio_path: str) -> Dict[str, Any]:
-        """Process a single audio file and return result dict."""
+        """Process a single audio file and return result dict.
+        
+        Models are automatically cached by findsylls, so the Sylber model
+        (or other neural models) will only be loaded once per worker process,
+        not once per file. This provides significant speedup for batch processing.
+        """
         result = {
             'audio_path': audio_path,
             'embeddings': None,
@@ -334,16 +345,18 @@ def embed_corpus(
         }
         
         try:
+            # embed_audio internally uses get_segmenter(cache=True) by default,
+            # so models are loaded once and reused across all files in this worker
             embeddings, metadata = embed_audio(
                 audio_path=audio_path,
                 segmentation=segmentation,
-                embedder=embedder,
+                features=features,
                 pooling=pooling,
                 sr=sr,
                 layer=layer,
                 device=device,
                 segmentation_kwargs=segmentation_kwargs,
-                embedder_kwargs=embedder_kwargs,
+                feature_kwargs=feature_kwargs,
                 pooling_kwargs=pooling_kwargs,
                 return_metadata=True
             )
@@ -373,7 +386,8 @@ def embed_corpus(
         else:
             results = [process_single_file(f) for f in audio_files]
     else:
-        # Parallel processing
+        # Parallel processing with automatic model caching per worker
+        # Each worker process caches models globally and reuses them across files
         results = Parallel(n_jobs=n_jobs, verbose=10 if verbose else 0)(
             delayed(process_single_file)(f) for f in audio_files
         )

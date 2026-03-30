@@ -57,6 +57,7 @@ def evaluate_syllable_segmentation(
     phone_tier: Union[str, int],
     syllable_tier: Optional[Union[str, int]] = None,
     tolerance: float = 0.05,
+    syllabic_set: Optional[set] = None,
 ) -> Dict:
     """Legacy convenience wrapper retained for backwards compatibility.
 
@@ -75,8 +76,10 @@ def evaluate_syllable_segmentation(
         None to skip syllable boundary/span evaluation.
     tolerance : float
         Boundary matching tolerance in seconds.
+    syllabic_set : set, optional
+        Set of syllabic phone symbols for nuclei evaluation. If None, uses default.
     """
-    vocalic_intervals = extract_vocalic_intervals(textgrid_path, phone_tier)
+    vocalic_intervals = extract_vocalic_intervals(textgrid_path, phone_tier, syllabic_set=syllabic_set)
     nuclei_eval = evaluate_nuclei(peaks, vocalic_intervals, window=tolerance)
     if syllable_tier is None:
         return {"nuclei": nuclei_eval, "boundaries": None, "spans": None}
@@ -101,6 +104,7 @@ def evaluate_segmentation(
     word_tier: Optional[int] = None,
     tiers: Optional[Dict[str, int]] = None,
     tolerance: float = 0.05,
+    syllabic_set: Optional[set] = None,
 ) -> Dict:
     """Evaluate a predicted segmentation against TextGrid references.
 
@@ -128,6 +132,11 @@ def evaluate_segmentation(
         '{name}_spans' evaluation keys.
     tolerance : float
         Boundary matching tolerance in seconds.
+    syllabic_set : set, optional
+        Set of syllabic phone symbols (vowels and syllabic consonants) for nuclei
+        evaluation. If None, uses default SYLLABIC (ARPABET + Spanish vowels).
+        Use this to specify language-specific vowel inventories (e.g., for Kono,
+        African languages with tone marks, etc.).
 
     Returns
     -------
@@ -155,16 +164,22 @@ def evaluate_segmentation(
     if phone_tier_index is None:
         nuclei_eval = None
     else:
-        vocalic_intervals = extract_vocalic_intervals(textgrid_path, phone_tier_index)
+        vocalic_intervals = extract_vocalic_intervals(
+            textgrid_path, phone_tier_index, syllabic_set=syllabic_set
+        )
         nuclei_eval = evaluate_nuclei(peaks, vocalic_intervals, window=tolerance)
     result["nuclei"] = nuclei_eval
 
+    # Determine evaluation tiers (non-phone tiers for boundaries/spans)
+    eval_tiers = {name: idx for name, idx in all_tiers.items() if name != 'phone'}
+    
+    # If only one tier specified for boundary/span evaluation, use generic keys
+    # Otherwise use tier-specific keys (for multi-level comparison)
+    use_generic_keys = len(eval_tiers) == 1
+    evaluated_tier_name = None
+    
     # Evaluate boundaries and spans for each specified tier
-    for tier_name, tier_index in all_tiers.items():
-        if tier_name == 'phone':
-            # Phone tier is only used for nuclei, skip boundary/span evaluation
-            continue
-            
+    for tier_name, tier_index in eval_tiers.items():
         if tier_index == -1 and tier_name == 'syllable':
             # Special case: generate synthetic syllables (requires phone tier)
             if phone_tier_index is None:
@@ -181,7 +196,17 @@ def evaluate_segmentation(
             boundary_eval = evaluate_syllable_boundaries(spans, reference_intervals, tolerance=tolerance)
             span_eval = evaluate_syllable_spans(spans, reference_intervals, tolerance=tolerance)
         
-        result[f"{tier_name}_boundaries"] = boundary_eval
-        result[f"{tier_name}_spans"] = span_eval
+        # Use generic keys if single tier, otherwise tier-specific keys
+        if use_generic_keys:
+            result["boundaries"] = boundary_eval
+            result["spans"] = span_eval
+            evaluated_tier_name = tier_name
+        else:
+            result[f"{tier_name}_boundaries"] = boundary_eval
+            result[f"{tier_name}_spans"] = span_eval
+    
+    # Add metadata about which tier was evaluated (for flattening/analysis)
+    if evaluated_tier_name:
+        result["tier_level"] = evaluated_tier_name
 
     return result

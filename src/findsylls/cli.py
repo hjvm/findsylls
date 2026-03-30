@@ -5,7 +5,7 @@ Provides two main subcommands:
   evaluate - batch evaluate segmentation against TextGrids
 
 Example usage:
-  findsylls segment input.wav --envelope sbs --method peaks_and_valleys --out out.json
+  findsylls segment input.wav --envelope sbs --method peakdetect --out out.json
   findsylls evaluate "data/**/*.wav" "data/**/*.TextGrid" --phone-tier 2 --syllable-tier 1 --word-tier 0 \
       --envelope hilbert --out results.csv
 """
@@ -36,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     seg = sub.add_parser("segment", help="Segment one or more audio files")
     seg.add_argument("audio", nargs="+", help="Input audio file(s) (wav/flac)")
     seg.add_argument("--envelope", default="sbs", help="Envelope method (rms|hilbert|lowpass|sbs|gammatone|theta)")
-    seg.add_argument("--method", default="peaks_and_valleys", help="Segmentation method")
+    seg.add_argument("--method", default="peakdetect", help="Segmentation method")
     seg.add_argument("--samplerate", type=int, default=16000, help="Target sample rate")
     seg.add_argument("--out", required=True, help="Output JSON file")
     seg.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
@@ -50,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--word-tier", type=int, default=None, help="Word tier index or omit for None")
     ev.add_argument("--tolerance", type=_positive_float, default=0.05, help="Boundary tolerance (s)")
     ev.add_argument("--envelope", default="sbs", help="Envelope method")
-    ev.add_argument("--method", default="peaks_and_valleys", help="Segmentation method")
+    ev.add_argument("--method", default="peakdetect", help="Segmentation method")
     ev.add_argument("--suffix-strip", default=None, help="Suffix to strip from TextGrid basenames before matching")
     ev.add_argument("--out", required=True, help="Output CSV path for flattened results")
     ev.add_argument("--aggregate", help="Optional CSV path for aggregated (F1 etc.) results")

@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.signal import spectrogram, filtfilt
 from scipy.signal.windows import hamming
+from .base import EnvelopeComputer
 
 def spectral_band_subtraction(waveform, sr, **kwargs):
     nfft = kwargs.get("nfft", 256)
@@ -26,3 +27,13 @@ def spectral_band_subtraction(waveform, sr, **kwargs):
     if envelope.max() > 0:
         envelope /= envelope.max()
     return envelope, t
+
+
+class SBSEnvelope(EnvelopeComputer):
+    """Compute spectral band subtraction envelope."""
+    
+    def __init__(self, pivot_freq=3000):
+        self.pivot_freq = pivot_freq
+    
+    def compute(self, audio: np.ndarray, sr: int):
+        return spectral_band_subtraction(audio, sr, pivot_freq=self.pivot_freq)

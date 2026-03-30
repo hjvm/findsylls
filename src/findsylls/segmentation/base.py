@@ -197,6 +197,17 @@ class End2EndSegmenter(BaseSegmenter):
             List of (start, nucleus, end) tuples in seconds
         """
         pass
+
+
+# =============================================================================
+# Abstract Base Classes for Phase 5 Modular Components
+# =============================================================================
+
+# Note: FeatureExtractor has been moved to findsylls.features.base
+# Import it from there: from findsylls.features import FeatureExtractor
+
+
+
     
     def _lazy_load_model(self):
         """

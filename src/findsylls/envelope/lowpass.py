@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.signal import butter, filtfilt
+from .base import EnvelopeComputer
 
 def compute_lowpass_envelope(waveform, sr, **kwargs):
     cutoff = kwargs.get("cutoff", 5)
@@ -18,3 +19,14 @@ def compute_lowpass_envelope(waveform, sr, **kwargs):
         envelope = filtfilt(b, a, rectified)
     times = np.linspace(0, len(waveform) / sr, len(waveform))
     return envelope, times
+
+
+class LowpassEnvelope(EnvelopeComputer):
+    """Compute lowpass filtered envelope."""
+    
+    def __init__(self, cutoff=5, order=4):
+        self.cutoff = cutoff
+        self.order = order
+    
+    def compute(self, audio: np.ndarray, sr: int):
+        return compute_lowpass_envelope(audio, sr, cutoff=self.cutoff, order=self.order)

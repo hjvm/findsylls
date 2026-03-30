@@ -1,0 +1,398 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0.0
+xmax = 4.265
+tiers? <exists>
+size = 3
+item []:
+	item [1]:
+		class = "IntervalTier"
+		name = "phones"
+		xmin = 0.0
+		xmax = 4.265
+		intervals: size = 58
+			intervals [1]:
+				xmin = 0.0
+				xmax = 0.14
+				text = "h#"
+			intervals [2]:
+				xmin = 0.14
+				xmax = 0.16869
+				text = "q"
+			intervals [3]:
+				xmin = 0.16869
+				xmax = 0.26331
+				text = "ae"
+			intervals [4]:
+				xmin = 0.26331
+				xmax = 0.30938
+				text = "tcl"
+			intervals [5]:
+				xmin = 0.30938
+				xmax = 0.33937
+				text = "d"
+			intervals [6]:
+				xmin = 0.33937
+				xmax = 0.3975
+				text = "ih"
+			intervals [7]:
+				xmin = 0.3975
+				xmax = 0.47875
+				text = "f"
+			intervals [8]:
+				xmin = 0.47875
+				xmax = 0.53563
+				text = "axr"
+			intervals [9]:
+				xmin = 0.53563
+				xmax = 0.57894
+				text = "n"
+			intervals [10]:
+				xmin = 0.57894
+				xmax = 0.61875
+				text = "tcl"
+			intervals [11]:
+				xmin = 0.61875
+				xmax = 0.67312
+				text = "t"
+			intervals [12]:
+				xmin = 0.67312
+				xmax = 0.83
+				text = "ay"
+			intervals [13]:
+				xmin = 0.83
+				xmax = 0.87825
+				text = "m"
+			intervals [14]:
+				xmin = 0.87825
+				xmax = 0.96081
+				text = "z"
+			intervals [15]:
+				xmin = 0.96081
+				xmax = 1.0225
+				text = "iy"
+			intervals [16]:
+				xmin = 1.0225
+				xmax = 1.153
+				text = "s"
+			intervals [17]:
+				xmin = 1.153
+				xmax = 1.36806
+				text = "er"
+			intervals [18]:
+				xmin = 1.36806
+				xmax = 1.39806
+				text = "v"
+			intervals [19]:
+				xmin = 1.39806
+				xmax = 1.42294
+				text = "dcl"
+			intervals [20]:
+				xmin = 1.42294
+				xmax = 1.43687
+				text = "d"
+			intervals [21]:
+				xmin = 1.43687
+				xmax = 1.5475
+				text = "eh"
+			intervals [22]:
+				xmin = 1.5475
+				xmax = 1.6275
+				text = "z"
+			intervals [23]:
+				xmin = 1.6275
+				xmax = 1.69875
+				text = "gcl"
+			intervals [24]:
+				xmin = 1.69875
+				xmax = 1.7425
+				text = "g"
+			intervals [25]:
+				xmin = 1.7425
+				xmax = 1.77831
+				text = "l"
+			intervals [26]:
+				xmin = 1.77831
+				xmax = 1.85
+				text = "iy"
+			intervals [27]:
+				xmin = 1.85
+				xmax = 1.90069
+				text = "kcl"
+			intervals [28]:
+				xmin = 1.90069
+				xmax = 1.98125
+				text = "k"
+			intervals [29]:
+				xmin = 1.98125
+				xmax = 2.00831
+				text = "l"
+			intervals [30]:
+				xmin = 2.00831
+				xmax = 2.05456
+				text = "ah"
+			intervals [31]:
+				xmin = 2.05456
+				xmax = 2.09706
+				text = "v"
+			intervals [32]:
+				xmin = 2.09706
+				xmax = 2.14438
+				text = "ax"
+			intervals [33]:
+				xmin = 2.14438
+				xmax = 2.20688
+				text = "n"
+			intervals [34]:
+				xmin = 2.20688
+				xmax = 2.23625
+				text = "kcl"
+			intervals [35]:
+				xmin = 2.23625
+				xmax = 2.32812
+				text = "k"
+			intervals [36]:
+				xmin = 2.32812
+				xmax = 2.36106
+				text = "w"
+			intervals [37]:
+				xmin = 2.36106
+				xmax = 2.47181
+				text = "eh"
+			intervals [38]:
+				xmin = 2.47181
+				xmax = 2.54338
+				text = "axr"
+			intervals [39]:
+				xmin = 2.54338
+				xmax = 2.6175
+				text = "l"
+			intervals [40]:
+				xmin = 2.6175
+				xmax = 2.7275
+				text = "iy"
+			intervals [41]:
+				xmin = 2.7275
+				xmax = 2.7625
+				text = "dx"
+			intervals [42]:
+				xmin = 2.7625
+				xmax = 2.90019
+				text = "axr"
+			intervals [43]:
+				xmin = 2.90019
+				xmax = 3.13
+				text = "pau"
+			intervals [44]:
+				xmin = 3.13
+				xmax = 3.21312
+				text = "ae"
+			intervals [45]:
+				xmin = 3.21312
+				xmax = 3.25925
+				text = "n"
+			intervals [46]:
+				xmin = 3.25925
+				xmax = 3.31537
+				text = "ix"
+			intervals [47]:
+				xmin = 3.31537
+				xmax = 3.40231
+				text = "z"
+			intervals [48]:
+				xmin = 3.40231
+				xmax = 3.4905
+				text = "ao"
+			intervals [49]:
+				xmin = 3.4905
+				xmax = 3.55319
+				text = "r"
+			intervals [50]:
+				xmin = 3.55319
+				xmax = 3.5915
+				text = "gcl"
+			intervals [51]:
+				xmin = 3.5915
+				xmax = 3.61563
+				text = "g"
+			intervals [52]:
+				xmin = 3.61563
+				xmax = 3.652
+				text = "ix"
+			intervals [53]:
+				xmin = 3.652
+				xmax = 3.7025
+				text = "nx"
+			intervals [54]:
+				xmin = 3.7025
+				xmax = 3.81625
+				text = "ih"
+			intervals [55]:
+				xmin = 3.81625
+				xmax = 3.9425
+				text = "s"
+			intervals [56]:
+				xmin = 3.9425
+				xmax = 3.96563
+				text = "tcl"
+			intervals [57]:
+				xmin = 3.96563
+				xmax = 4.05713
+				text = "t"
+			intervals [58]:
+				xmin = 4.05713
+				xmax = 4.265
+				text = "h#"
+	item [2]:
+		class = "IntervalTier"
+		name = "words"
+		xmin = 0.14
+		xmax = 4.265
+		intervals: size = 15
+			intervals [1]:
+				xmin = 0.14
+				xmax = 0.30938
+				text = "at"
+			intervals [2]:
+				xmin = 0.30938
+				xmax = 0.61875
+				text = "different"
+			intervals [3]:
+				xmin = 0.61875
+				xmax = 0.96081
+				text = "times"
+			intervals [4]:
+				xmin = 0.96081
+				xmax = 1.0225
+				text = "he"
+			intervals [5]:
+				xmin = 1.0225
+				xmax = 1.43687
+				text = "served"
+			intervals [6]:
+				xmin = 1.43687
+				xmax = 1.6275
+				text = "as"
+			intervals [7]:
+				xmin = 1.6275
+				xmax = 1.85
+				text = "glee"
+			intervals [8]:
+				xmin = 1.85
+				xmax = 2.09706
+				text = "club"
+			intervals [9]:
+				xmin = 2.09706
+				xmax = 2.20688
+				text = "and"
+			intervals [10]:
+				xmin = 2.20688
+				xmax = 2.54338
+				text = "choir"
+			intervals [11]:
+				xmin = 2.54338
+				xmax = 2.90019
+				text = "leader"
+			intervals [12]:
+				xmin = 2.90019
+				xmax = 3.13
+				text = ""
+			intervals [13]:
+				xmin = 3.13
+				xmax = 3.25925
+				text = "and"
+			intervals [14]:
+				xmin = 3.25925
+				xmax = 3.40231
+				text = "as"
+			intervals [15]:
+				xmin = 3.40231
+				xmax = 4.05713
+				text = "organist"
+	item [3]:
+		class = "IntervalTier"
+		name = "syllables"
+		xmin = 0.14
+		xmax = 4.265
+		intervals: size = 20
+			intervals [1]:
+				xmin = 0.14
+				xmax = 0.30938
+				text = "AETCL"
+			intervals [2]:
+				xmin = 0.30938
+				xmax = 0.3975
+				text = "DIH"
+			intervals [3]:
+				xmin = 0.3975
+				xmax = 0.61875
+				text = "FERNTCL"
+			intervals [4]:
+				xmin = 0.61875
+				xmax = 0.96081
+				text = "TAYMZ"
+			intervals [5]:
+				xmin = 0.96081
+				xmax = 1.0225
+				text = "IY"
+			intervals [6]:
+				xmin = 1.0225
+				xmax = 1.43687
+				text = "SERVDCLD"
+			intervals [7]:
+				xmin = 1.43687
+				xmax = 1.6275
+				text = "EHZ"
+			intervals [8]:
+				xmin = 1.6275
+				xmax = 1.85
+				text = "GCLGLIY"
+			intervals [9]:
+				xmin = 1.85
+				xmax = 2.09706
+				text = "KCLKLAHV"
+			intervals [10]:
+				xmin = 2.09706
+				xmax = 2.20688
+				text = "AHN"
+			intervals [11]:
+				xmin = 2.20688
+				xmax = 2.47181
+				text = "KCLKWEH"
+			intervals [12]:
+				xmin = 2.47181
+				xmax = 2.54338
+				text = "ER"
+			intervals [13]:
+				xmin = 2.54338
+				xmax = 2.7275
+				text = "LIY"
+			intervals [14]:
+				xmin = 2.7275
+				xmax = 2.90019
+				text = "DER"
+			intervals [15]:
+				xmin = 2.90019
+				xmax = 3.13
+				text = ""
+			intervals [16]:
+				xmin = 3.13
+				xmax = 3.25925
+				text = "AEN"
+			intervals [17]:
+				xmin = 3.25925
+				xmax = 3.40231
+				text = "IHZ"
+			intervals [18]:
+				xmin = 3.40231
+				xmax = 3.5915
+				text = "AORGCL"
+			intervals [19]:
+				xmin = 3.5915
+				xmax = 3.652
+				text = "GIH"
+			intervals [20]:
+				xmin = 3.652
+				xmax = 4.05713
+				text = "NIHSTCLT"

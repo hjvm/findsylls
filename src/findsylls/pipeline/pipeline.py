@@ -58,12 +58,12 @@ def segment_audio(
         # Old API (backward compatible)
         >>> syllables, env, times = segment_audio('test.wav', 
         ...                                        envelope_fn='hilbert',
-        ...                                        segment_fn='peaks_and_valleys')
+        ...                                        segment_fn='peakdetect')
         
         # New API (recommended)
         >>> syllables, _, _ = segment_audio('test.wav', method='sylber')
         >>> syllables, env, times = segment_audio('test.wav', 
-        ...                                        method='peaks_and_valleys',
+        ...                                        method='peakdetect',
         ...                                        envelope_fn='hilbert')
     """
     if envelope_kwargs is None:
@@ -77,15 +77,21 @@ def segment_audio(
     # Determine which method to use
     if method is None:
         # Backward compatibility: use segment_fn if provided
-        method = segment_fn or "peaks_and_valleys"
+        method = segment_fn or "peakdetect"
     
     # Set default envelope method
     if envelope_fn is None:
         envelope_fn = "hilbert"  # Changed default from "sbs" to more common "hilbert"
     
     # Get segmenter
+    # For envelope-based methods (peakdetect), pass envelope config
+    segmenter_kwargs = {**segmentation_kwargs}
+    if method in ["peakdetect", "peakdetect", "billauer"]:
+        segmenter_kwargs["envelope_method"] = envelope_fn
+        segmenter_kwargs["envelope_kwargs"] = envelope_kwargs
+    
     try:
-        segmenter = get_segmenter(method, **segmentation_kwargs)
+        segmenter = get_segmenter(method, **segmenter_kwargs)
     except ValueError as e:
         # Fall back to old functional API if method not found in registry
         # This handles the case where user provides a method string before
@@ -99,25 +105,22 @@ def segment_audio(
     
     # Route based on segmenter type
     if isinstance(segmenter, End2EndSegmenter):
-        # End-to-end method: process audio directly
+        # End-to-end method: process audio directly (Sylber, VG-HuBERT with native segmentation)
         syllables = segmenter.segment(audio=audio, sr=sr)
         return syllables, None, None
     
     elif isinstance(segmenter, EnvelopeBasedSegmenter):
-        # Envelope-based method
+        # Envelope-based method (classical signal processing or peak detection)
         if return_envelope:
-            # Compute envelope for visualization
+            # Compute envelope once for both visualization AND segmentation
             envelope, times = get_amplitude_envelope(
                 audio, sr, method=envelope_fn, **envelope_kwargs
             )
-            # Segment (method will compute its own envelope internally if needed)
-            syllables = segmenter.segment(
-                audio=audio, sr=sr, 
-                envelope_method=envelope_fn
-            )
+            # Pass pre-computed envelope to avoid recomputation
+            syllables = segmenter.segment(envelope=envelope, times=times)
             return syllables, envelope, times
         else:
-            # Just segment without returning envelope
+            # Segment from audio (envelope computed internally)
             syllables = segmenter.segment(audio=audio, sr=sr)
             return syllables, None, None
     
@@ -162,7 +165,7 @@ def run_evaluation(
         # Old API (backward compatible)
         >>> results = run_evaluation(
         ...     'data/**/*.TextGrid', 'data/**/*.wav',
-        ...     envelope_fn='hilbert', segmentation_fn='peaks_and_valleys'
+        ...     envelope_fn='hilbert', segmentation_fn='peakdetect'
         ... )
         
         # New API with Sylber
@@ -183,7 +186,7 @@ def run_evaluation(
     )
     
     # Determine method name for result tracking
-    method_name = method or segmentation_fn or "peaks_and_valleys"
+    method_name = method or segmentation_fn or "peakdetect"
     envelope_name = envelope_fn or "hilbert"
     
     results = []
