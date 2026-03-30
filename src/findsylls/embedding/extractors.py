@@ -195,10 +195,10 @@ def _extract_sylber_features(
     """
     global _SYLBER_SEGMENTER
     
-    # Lazy load segmenter (reuses existing SylberSegmenter)
+    # Lazy load segmenter (reuses existing SylberSegmenter preset)
     if _SYLBER_SEGMENTER is None:
         try:
-            from ..segmentation.end2end.sylber_segmenter import SylberSegmenter
+            from ..segmentation.presets import SylberSegmenter
         except ImportError:
             raise ImportError(
                 "Sylber feature extraction requires the sylber package. "
@@ -263,34 +263,29 @@ def _extract_vg_hubert_features(
     sr: int,
     layer: Optional[int] = None,
     device: str = 'auto',
-    model_path: Optional[str] = None,
+    model_ckpt: Optional[str] = None,
     **kwargs
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Extract features using VG-HuBERT model.
+    Extract features using VG-HuBERT model from vg-hubert PyPI package.
     
     Args:
         audio: Audio waveform (mono)
         sr: Sample rate (must be 16000 for VG-HuBERT)
-        layer: Layer to extract from (default: 8)
+        layer: Layer to extract from (default: 8 for syllables)
         device: Device placement ('auto', 'cuda', 'cpu', 'mps')
-        model_path: Path to VG-HuBERT checkpoint directory (required)
-        **kwargs: Additional arguments (e.g., snapshot='best')
+        model_ckpt: HuggingFace model checkpoint or local path (default: "hjvm/VG-HuBERT")
+                   If None, uses default from HuggingFace Hub with automatic download
+        **kwargs: Additional arguments (e.g., mode='syllable')
         
     Returns:
         (features, times): (num_frames, feature_dim) array and time points
         
     Raises:
-        ValueError: If model_path not provided or sr != 16000
-        ImportError: If required dependencies missing
+        ValueError: If sr != 16000
+        ImportError: If vg-hubert package not installed
     """
     global _VG_HUBERT_SEGMENTER
-    
-    if model_path is None:
-        raise ValueError(
-            "VG-HuBERT feature extraction requires model_path. "
-            "Download from: https://www.cs.utexas.edu/~harwath/model_checkpoints/vg_hubert/vg-hubert_3.tar"
-        )
     
     if sr != 16000:
         raise ValueError(f"VG-HuBERT requires 16kHz audio, got {sr}Hz. Please resample.")
@@ -305,9 +300,14 @@ def _extract_vg_hubert_features(
         else:
             device = 'cpu'
     
-    # Default layer for VG-HuBERT
+    # Default model checkpoint (auto-downloads from HuggingFace)
+    if model_ckpt is None:
+        model_ckpt = "hjvm/VG-HuBERT"
+    
+    # Default layer and mode
     if layer is None:
         layer = 8
+    mode = kwargs.get('mode', 'syllable')
     
     # Lazy load VG-HuBERT segmenter (we'll reuse its feature extraction)
     if _VG_HUBERT_SEGMENTER is None:
@@ -316,15 +316,14 @@ def _extract_vg_hubert_features(
         except ImportError:
             raise ImportError(
                 "VG-HuBERT feature extraction requires the VG-HuBERT segmenter. "
-                "Make sure findsylls is properly installed."
+                "Make sure findsylls[embedding] is properly installed with: pip install 'findsylls[embedding]' vg-hubert"
             )
         
-        snapshot = kwargs.get('snapshot', 'best')
         _VG_HUBERT_SEGMENTER = VGHubertSegmenter(
-            model_path=model_path,
+            model_ckpt=model_ckpt,
+            mode=mode,
             layer=layer,
             device=device,
-            snapshot=snapshot,
             cache=True  # Keep model loaded
         )
     

@@ -5,7 +5,7 @@ Extract per-syllable embeddings from audio for downstream tasks like
 clustering, classification, and cross-lingual phonetic analysis.
 
 Two orthogonal dimensions:
-1. Embedder (feature extraction): Sylber, VG-HuBERT, MFCC, etc.
+1. Features (feature extraction): Sylber, VG-HuBERT, MFCC, etc.
 2. Pooling (frame→syllable): mean, ONC template, max, etc.
 
 Usage:
@@ -14,13 +14,13 @@ Usage:
     >>> embeddings, metadata = embed_audio(
     ...     'audio.wav',
     ...     segmentation='sylber',
-    ...     embedder='sylber',
+    ...     features='sylber',
     ...     pooling='mean'
     ... )
     >>> # Multiple files
     >>> results = embed_corpus(
     ...     ['audio1.wav', 'audio2.wav'],
-    ...     embedder='mfcc',
+    ...     features='mfcc',
     ...     n_jobs=4
     ... )
 """

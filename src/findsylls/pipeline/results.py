@@ -11,7 +11,7 @@ def flatten_results(results: List[dict]) -> pd.DataFrame:
     flattened = []
     for res in results:
         # Copy metadata fields (both standard and any extras like 'dataset', 'method', etc.)
-        metadata_keys = {"audio_file", "tg_file", "envelope", "segmentation", "dataset", "method", "method_type"}
+        metadata_keys = {"audio_file", "tg_file", "envelope", "segmentation", "dataset", "method", "method_type", "tier_level"}
         flat = {k: res.get(k) for k in metadata_keys if k in res}
         
         # Iterate over all keys in result that contain evaluation data

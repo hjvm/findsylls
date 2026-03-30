@@ -1,8 +1,19 @@
+"""Internal preprocessing: Multi-band gammatone filterbank for theta oscillator.
+
+This module is NOT a standalone envelope method. It returns a multi-band [bands, time]
+array used internally by theta_oscillator_envelope() which reduces it to a single envelope.
+"""
 import numpy as np, librosa
 from gammatone.filters import make_erb_filters, erb_filterbank
 from scipy.signal import hilbert
 
-def gammatone_filterbank_envelope(waveform, sr, **kwargs):
+def _gammatone_filterbank_envelope(waveform, sr, **kwargs):
+    """Compute multi-band gammatone filterbank envelope (internal preprocessing only).
+    
+    Returns:
+        envelope: [bands, time] array of envelopes per frequency band
+        times: Time points in seconds
+    """
     bands = kwargs.get("bands", 20)
     minfreq = kwargs.get("minfreq", 50)
     maxfreq = kwargs.get("maxfreq", 7500)

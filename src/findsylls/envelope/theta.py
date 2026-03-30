@@ -1,12 +1,13 @@
 import numpy as np
-from .gammatone import gammatone_filterbank_envelope
+from .base import EnvelopeComputer
+from .gammatone import _gammatone_filterbank_envelope
 
 def theta_oscillator_envelope(waveform, sr, **kwargs):
     f = kwargs.get("f", 5)
     Q = kwargs.get("Q", 0.5)
     N = kwargs.get("N", 10)
     verbose = kwargs.get("verbose", 0)
-    envelope, _ = gammatone_filterbank_envelope(waveform, sr, **kwargs)
+    envelope, _ = _gammatone_filterbank_envelope(waveform, sr, **kwargs)
     if N > envelope.shape[1]:
         N = envelope.shape[1]
     delays = np.array([[72,34,22,16,12,9,8,6,5,4,3,3,2,2,1,0,0,0,0,0],[107,52,34,25,19,16,13,11,10,9,8,7,6,5,5,4,4,4,3,3],[129,64,42,31,24,20,17,14,13,11,10,9,8,7,7,6,6,5,5,4],[145,72,47,35,28,23,19,17,15,13,12,10,9,9,8,7,7,6,6,5],[157,78,51,38,30,25,21,18,16,14,13,12,11,10,9,8,8,7,7,6],[167,83,55,41,32,27,23,19,17,15,14,12,11,10,10,9,8,8,7,7],[175,87,57,43,34,28,24,21,18,16,15,13,12,11,10,9,9,8,8,7],[181,90,59,44,35,29,25,21,19,17,15,14,13,12,11,10,9,9,8,8],[187,93,61,46,36,30,25,22,19,17,16,14,13,12,11,10,10,9,8,8],[191,95,63,47,37,31,26,23,20,18,16,15,13,12,11,11,10,9,9,8]])
@@ -41,3 +42,15 @@ def theta_oscillator_envelope(waveform, sr, **kwargs):
     sonority = sonority / np.max(sonority)
     times = np.linspace(0, len(waveform)/sr, num=len(sonority))
     return sonority, times
+
+
+class ThetaEnvelope(EnvelopeComputer):
+    """Compute theta oscillator envelope (gammatone + oscillator)."""
+    
+    def __init__(self, f=5, Q=0.5, N=10):
+        self.f = f
+        self.Q = Q
+        self.N = N
+    
+    def compute(self, audio: np.ndarray, sr: int):
+        return theta_oscillator_envelope(audio, sr, f=self.f, Q=self.Q, N=self.N)

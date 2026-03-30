@@ -4,9 +4,9 @@ message: If you use this software, please cite it using the metadata below.
 authors:
   - given-names: Héctor Javier
     family-names: Vázquez Martínez
-version: 0.1.1
+version: 1.0.3
 license: MIT
-date-released: 2025-09-23
+date-released: 2026-03-30
 repository-code: https://github.com/hjvm/findsylls
 keywords:
   - speech
@@ -17,11 +17,12 @@ keywords:
   - prosody
   - unsupervised
 preferred-citation:
-  type: software
-  title: findsylls: Unsupervised syllable segmentation & evaluation toolkit
+  type: article
+  title: "findsylls: A Language-Agnostic Toolkit for Syllable-Level Speech Tokenization and Embedding"
   authors:
     - given-names: Héctor Javier
       family-names: Vázquez Martínez
-  year: 2025
-  version: 0.1.1
-  repository-code: https://github.com/hjvm/findsylls
+  year: 2026
+  journal: arXiv
+  volume: "abs/2603.26292"
+  url: https://arxiv.org/abs/2603.26292

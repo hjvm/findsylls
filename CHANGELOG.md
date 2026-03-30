@@ -2,6 +2,66 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2026-03-30
+
+### Changed
+
+- Updated project citation metadata to reference the published arXiv preprint:
+  - Vázquez Martínez, Héctor Javier (2026), arXiv:2603.26292
+- Updated `CITATION.cff` preferred citation from software-only metadata to article metadata.
+- Updated README citation section with preprint plain-text and BibTeX entries.
+
+### Packaging
+
+- Bumped package version to `1.0.3` for PyPI release.
+
+## [1.0.2] - 2024-12-18
+
+### BREAKING CHANGES
+
+**API Terminology Update**: Parameter names have been updated for technical accuracy:
+- `embedder` → `features` (in `embed_audio()` and `embed_corpus()`)
+- `embedder_kwargs` → `feature_kwargs`
+- Metadata key: `'embedder'` → `'features'`
+
+**Rationale**: These parameters specify feature extraction methods (MFCC, Sylber, etc.), not embedders. The embeddings are created by pooling the extracted features over syllable spans. This change makes the pipeline conceptually clearer: features → pooling → embeddings.
+
+**Migration Guide**:
+```python
+# OLD (v1.0.1 and earlier)
+embed_audio('audio.wav', embedder='mfcc', embedder_kwargs={'include_delta': True})
+embed_corpus(files, embedder='sylber', embedder_kwargs={})
+
+# NEW (v1.0.2+)
+embed_audio('audio.wav', features='mfcc', feature_kwargs={'include_delta': True})
+embed_corpus(files, features='sylber', feature_kwargs={})
+```
+
+**Note**: Saved embeddings from v1.0.1 will have `metadata['embedder']` while v1.0.2+ saves `metadata['features']`. Both keys contain the same information.
+
+### Performance
+
+- **CRITICAL FIX**: Added model caching in `get_segmenter()` to prevent reloading neural segmentation models (Sylber, VG-HuBERT) for every audio file during batch processing
+- Models are now cached globally within each worker process and reused across all files
+- **Speedup**: ~2.8x improvement for large corpus processing with neural segmentation
+  - Before: ~1.4 sec/file (projected 11+ hours for 28K files)
+  - After: ~0.5 sec/file (projected 4 hours for 28K files)
+- New utility functions: `clear_segmenter_cache()`, `get_cache_info()`
+
+### Changed
+
+- `segmentation.dispatch.get_segmenter()` now accepts `cache=True` parameter (default: enabled)
+- Cache key automatically generated from method name + kwargs
+- `embed_corpus()` documentation updated to note automatic model caching
+- All examples and documentation updated to use new `features` parameter naming
+
+### Technical Details
+
+- Global cache dictionary `_SEGMENTER_CACHE` stores segmenter instances per worker process
+- Each unique configuration (method + parameters) cached separately
+- In multiprocessing mode (joblib default), each worker maintains its own cache
+- Result: Model loaded once per worker instead of once per file (massive speedup for batch processing)
+
 ## [1.0.1] - 2024-12-17
 
 ### Fixed
@@ -79,15 +139,15 @@ All notable changes to this project will be documented in this file.
 ### Validated
 - ✅ **High correlation (r=0.9990)** with legacy spot_the_word implementation
 - ✅ **100% syllable count match** (10/10 test files)
-- ✅ Segmentation produces identical boundaries (sbs + peaks_and_valleys)
+- ✅ Segmentation produces identical boundaries (sbs + peakdetect)
 - ✅ MFCC feature extraction matches legacy code
 - ✅ Mean pooling is consistent
 - Tested on Brent corpus (4,209 syllables across 862 utterances)
 
 ### Notes
 - Our `onc` pooling = legacy `onc-strict` (30% onset, peak nucleus, 70% coda)
-- Old findsylls defaults: `envelope_fn='sbs'`, `segment_fn='peaks_and_valleys'`
-- New findsylls defaults: `envelope_fn='hilbert'`, `method='peaks_and_valleys'`
+- Old findsylls defaults: `envelope_fn='sbs'`, `segment_fn='peakdetect'`
+- New findsylls defaults: `envelope_fn='hilbert'`, `method='peakdetect'`
 
 ---
 

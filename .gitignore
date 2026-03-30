@@ -23,6 +23,8 @@ htmlcov/
 
 # Local artifacts
 *.sylls.json
+figures/
+data/kono
 
 # Notebook / evaluation outputs
 output/
