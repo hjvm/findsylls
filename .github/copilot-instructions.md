@@ -8,7 +8,7 @@ Pipeline to (a) load & normalize speech audio, (b) derive an amplitude (or modul
 ## 2. High-Level Architecture
 - `audio/` – I/O + normalization. Key: `load_audio()` prefers torchaudio if installed; falls back to soundfile/librosa; always returns mono float32 at target samplerate. `match_wavs_to_textgrids()` performs fuzzy filename alignment (suffix stripping, alt index, prefix & substring heuristics). Changes here impact the entire pipeline.
 - `envelope/` – Envelope computation dispatch (`dispatch.get_amplitude_envelope`). Supported methods: `rms`, `hilbert`, `lowpass`, `sbs` (spectral band subtraction), `gammatone`, `theta`. Each method returns `(envelope, times)` arrays aligned to audio duration. When adding a method: implement `compute_*` returning `(env, t)` and register in `dispatch.py`.
-- `segmentation/` – `dispatch.segment_envelope` chooses algorithm (currently `peaks_and_valleys`; stubs for `mermelstein`, `theta` commented). Segmentation functions must accept `envelope`, `times`, **kwargs, and return a list of `(start, peak, end)` tuples (peak is the nucleus proxy). Downstream evaluation derives `peaks = [peak]` and `spans = [(start, end)]`.
+- `segmentation/` – `dispatch.segment_envelope` chooses algorithm (currently `peakdetect`; stubs for `mermelstein`, `theta` commented). Segmentation functions must accept `envelope`, `times`, **kwargs, and return a list of `(start, peak, end)` tuples (peak is the nucleus proxy). Downstream evaluation derives `peaks = [peak]` and `spans = [(start, end)]`.
 - `evaluation/` – Orchestrated by `evaluation.evaluator.evaluate_segmentation`. Produces a dict with dynamically-generated keys based on specified tiers (e.g., `nuclei`, `syllable_boundaries`, `word_spans`). The `nuclei` evaluation uses the 'phone' tier from tiers dict for vocalic intervals. Boundary & span evaluators compare predicted spans against reference intervals extracted from any TextGrid tier. Each metric dict contains counts like `TP`, `Ins`, `Del`, `Sub`. Tier specification uses the `tiers` dict mapping tier names to indices (e.g., `tiers={'phone': 2, 'syllable': 1, 'word': 0}`). Legacy parameters (`phone_tier`, `syllable_tier`, `word_tier`) are still supported for backward compatibility.
 - `pipeline/` – User-facing APIs. `pipeline.segment_audio()` = single-file end‑to‑end; `pipeline.run_evaluation()` batches matching wav/TextGrid pairs, executes segmentation + evaluation, tags results with chosen envelope/segmentation method, and flattens via `pipeline.results.flatten_results()` then optional aggregation with `aggregate_results()`.
 - `parsing/` – TextGrid parsing: extracts phone / syllable / word intervals; filters vowels via `SYLLABIC` set; returns clean interval tuples. Note: `extract_syllable_intervals` returns dict with `intervals` & `deleted` – evaluation code expects raw list (handles None). Be consistent.
@@ -52,7 +52,7 @@ Pipeline to (a) load & normalize speech audio, (b) derive an amplitude (or modul
 Single file segmentation:
 ```python
 from findsylls.pipeline.pipeline import segment_audio
-sylls, env, t = segment_audio('audio.wav', envelope_fn='hilbert', segment_fn='peaks_and_valleys', segmentation_kwargs={'delta':0.02})
+sylls, env, t = segment_audio('audio.wav', envelope_fn='hilbert', segment_fn='peakdetect', segmentation_kwargs={'delta':0.02})
 ```
 Evaluation with flexible tier specification:
 ```python

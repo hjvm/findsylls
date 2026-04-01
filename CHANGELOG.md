@@ -2,6 +2,54 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-04-01
+
+### BREAKING CHANGES
+
+**Major Architectural Overhaul**:
+
+1. **Embedding Layer Rebuilt**:
+   - Fully refactored from functional to OOP-first design following segmentation module pattern.
+   - New class-based `EmbeddingPipeline` replaces legacy `embed_audio`/`embed_corpus` signatures.
+   - Modular pooler architecture: `BasePooler` + concrete instances (MeanPooler, ONCPooler, MaxPooler, MedianPooler).
+   - Poolers now live in `src/findsylls/embedding/poolers/` with dedicated dispatch registry.
+   - Removed embedding-internal feature extraction duplication; now uses `src/findsylls/features/` exclusively.
+   - Fixed broken Sylber path (NotImplementedError) and removed stale VG-HuBERT references.
+
+2. **Discovery Layer Added** (New First-Class Module):
+   - New package: `src/findsylls/discovery/`.
+   - Purpose: Cluster syllable embeddings into identity groups (distinct from syllable segmentation).
+   - Modular design: `BaseDiscoveryModel` + concrete instances (KMeansDiscovery, AgglomerativeDiscovery).
+   - Class-based `DiscoveryPipeline` for corpus-level orchestration.
+   - Fully separated from segmentation layer (no cross-layer coupling).
+
+3. **Removed Legacy Code**:
+   - Deleted 8 stale development docs: `docs/dev/PHASE*.md`, `docs/dev/DEVELOPMENT_GUIDE.md`, `docs/dev/UNIFIED_ROADMAP.md`, `docs/dev/TODO_INTERSPEECH.md`.
+   - Deleted `RELEASE_NOTES_v1.0.0.md`.
+   - Removed embedding-internal feature extraction legacy paths.
+   - Removed compatibility aliases that were no longer needed.
+
+4. **API Simplifications**:
+   - Embedding API now OOP-first (breaking change from v2.0.0 functional style).
+   - Discovery API fully OOP as first-class module.
+
+### Added
+
+- `src/findsylls/embedding/poolers/` subpackage with modular pooler classes and dispatch.
+- `src/findsylls/discovery/` subpackage with modular discovery models and pipeline.
+- `BasePooler` abstract class for extensible pooling strategies.
+- `BaseDiscoveryModel` abstract class for extensible clustering/discovery methods.
+
+### Changed
+
+- Embedding pipeline now uses `src/findsylls/features/` exclusively (no duplication).
+- Consolidated and cleaned up documentation set; removed phase-based development docs.
+- Updated version across all metadata (pyproject.toml, CITATION.cff, `__init__.py`).
+
+### Packaging
+
+- Bumped package version to `3.0.0` due to scope and breaking nature of changes.
+
 ## [2.0.0] - 2026-03-30
 
 ### BREAKING CHANGES

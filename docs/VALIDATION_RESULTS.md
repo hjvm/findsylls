@@ -16,7 +16,7 @@ The new findsylls embedding pipeline (Phases 1-3) produces results that are **hi
 ## Test Configuration
 
 ### Legacy Implementation (spot_the_word)
-- **Segmentation**: `envelope_fn='sbs'`, `segment_fn='peaks_and_valleys'` (old findsylls defaults)
+- **Segmentation**: `envelope_fn='sbs'`, `segment_fn='peakdetect'` (old findsylls defaults)
 - **Features**: MFCC (13-dim, frame_hop=0.02s)
 - **Pooling**: Mean (average frames within syllable boundaries)
 - **Data Format**: Single dict with concatenated embeddings from all files
@@ -25,7 +25,7 @@ The new findsylls embedding pipeline (Phases 1-3) produces results that are **hi
   - Embeddings: (4209, 13) float32 array
 
 ### New Implementation (findsylls Phase 1-3)
-- **Segmentation**: `envelope.sbs.compute_sbs()` + `segmentation.peaks_and_valleys()`
+- **Segmentation**: `envelope.sbs.compute_sbs()` + `segmentation.peakdetect()`
 - **Features**: `embedding.extractors.extract_mfcc()` (13-dim)
 - **Pooling**: `embedding.pooling._pool_mean()`
 - **Data Format**: List of per-file result dicts with metadata
@@ -62,8 +62,8 @@ File 10: 4 syllables, correlation=0.9997
 ## Technical Notes
 
 ### Segmentation Consistency
-- **Old defaults** (spot_the_word): `envelope_fn='sbs'`, `segment_fn='peaks_and_valleys'`
-- **New defaults** (findsylls): `envelope_fn='hilbert'`, `method='peaks_and_valleys'`
+- **Old defaults** (spot_the_word): `envelope_fn='sbs'`, `segment_fn='peakdetect'`
+- **New defaults** (findsylls): `envelope_fn='hilbert'`, `method='peakdetect'`
 - Validation used **old defaults** to ensure fair comparison
 - 100% syllable count match confirms segmentation algorithm unchanged
 

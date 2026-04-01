@@ -4,7 +4,7 @@ message: If you use this software, please cite it using the metadata below.
 authors:
   - given-names: Héctor Javier
     family-names: Vázquez Martínez
-version: 2.0.0
+version: 3.0.0
 license: MIT
 date-released: 2026-03-30
 repository-code: https://github.com/hjvm/findsylls

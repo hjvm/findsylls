@@ -13,13 +13,13 @@ Demonstrates how to extract MFCC features with first and second-order derivative
 from findsylls.embedding.pipeline import embed_audio
 
 # Standard 13-dimensional MFCC
-embeddings, meta = embed_audio('audio.wav', embedder='mfcc')
+embeddings, meta = embed_audio('audio.wav', features='mfcc')
 
 # 26-dimensional MFCC with deltas
-embeddings, meta = embed_audio('audio.wav', embedder='mfcc', include_delta=True)
+embeddings, meta = embed_audio('audio.wav', features='mfcc', include_delta=True)
 
 # 39-dimensional MFCC with deltas and delta-deltas
-embeddings, meta = embed_audio('audio.wav', embedder='mfcc', 
+embeddings, meta = embed_audio('audio.wav', features='mfcc', 
                                include_delta=True, include_delta_delta=True)
 ```
 
@@ -39,7 +39,7 @@ Complete example of extracting VG-HuBERT embeddings from audio.
 from findsylls.embedding.pipeline import embed_audio
 
 # Extract VG-HuBERT embeddings with mean pooling
-embeddings, meta = embed_audio('audio.wav', embedder='vg-hubert', pool_method='mean')
+embeddings, meta = embed_audio('audio.wav', features='vg-hubert', pool_method='mean')
 ```
 
 **Requirements**:
@@ -63,7 +63,7 @@ from findsylls.embedding.storage import save_embeddings, load_embeddings
 # Process multiple files in parallel
 results = embed_corpus(
     audio_files=['file1.wav', 'file2.wav', 'file3.wav'],
-    embedder='mfcc',
+    features='mfcc',
     pooling='mean',
     n_jobs=4,  # Parallel processing
     verbose=True
@@ -90,9 +90,9 @@ results = load_embeddings('corpus_embeddings.npz')
 
 ## Quick Reference
 
-### All Embedders
+### All Feature Extractors
 
-| Embedder | Dimensions | Auto-download | Notes |
+| Feature Extractor | Dimensions | Auto-download | Notes |
 |----------|-----------|---------------|-------|
 | `sylber` | 768 | ✅ Yes | HuggingFace Hub model |
 | `vg-hubert` | 768 | ❌ Manual | See VG_HUBERT_README.md |
@@ -110,12 +110,12 @@ results = load_embeddings('corpus_embeddings.npz')
 
 **CPU Features** (MFCC, melspec):
 ```python
-results = embed_corpus(audio_files, embedder='mfcc', n_jobs=-1)  # Use all CPUs
+results = embed_corpus(audio_files, features='mfcc', n_jobs=-1)  # Use all CPUs
 ```
 
 **GPU Models** (Sylber, VG-HuBERT):
 ```python
-results = embed_corpus(audio_files, embedder='sylber', n_jobs=1)  # Sequential
+results = embed_corpus(audio_files, features='sylber', n_jobs=1)  # Sequential
 ```
 
 ---

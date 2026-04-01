@@ -30,16 +30,16 @@ def test_mfcc_mean():
     
     embeddings, metadata = embed_audio(
         audio_path,
-        segmentation='peaks_and_valleys',
-        embedder='mfcc',
+        segmentation='peakdetect',
+        features='mfcc',
         pooling='mean',
-        embedder_kwargs={'n_mfcc': 13}
+        feature_kwargs={'n_mfcc': 13}
     )
     
     print(f"✓ Audio loaded: {metadata['audio_path']}")
     print(f"✓ Duration: {metadata['duration']:.2f}s")
     print(f"✓ Segmentation: {metadata['segmentation_method']}")
-    print(f"✓ Embedder: {metadata['embedder']}")
+    print(f"✓ Features: {metadata['features']}")
     print(f"✓ Pooling: {metadata['pooling']}")
     print(f"✓ Syllables found: {metadata['num_syllables']}")
     print(f"✓ Embeddings shape: {embeddings.shape}")
@@ -74,7 +74,7 @@ def test_sylber_mean():
     embeddings, metadata = embed_audio(
         audio_path,
         segmentation='sylber',
-        embedder='sylber',
+        features='sylber',
         pooling='mean',
         layer=8
     )
@@ -82,7 +82,7 @@ def test_sylber_mean():
     print(f"✓ Audio loaded: {metadata['audio_path']}")
     print(f"✓ Duration: {metadata['duration']:.2f}s")
     print(f"✓ Segmentation: {metadata['segmentation_method']}")
-    print(f"✓ Embedder: {metadata['embedder']} (layer {metadata['layer']})")
+    print(f"✓ Features: {metadata['features']} (layer {metadata['layer']})")
     print(f"✓ Pooling: {metadata['pooling']}")
     print(f"✓ Syllables found: {metadata['num_syllables']}")
     print(f"✓ Embeddings shape: {embeddings.shape}")
@@ -117,7 +117,7 @@ def test_sylber_onc():
     embeddings, metadata = embed_audio(
         audio_path,
         segmentation='sylber',
-        embedder='sylber',
+        features='sylber',
         pooling='onc',
         layer=8
     )
@@ -125,7 +125,7 @@ def test_sylber_onc():
     print(f"✓ Audio loaded: {metadata['audio_path']}")
     print(f"✓ Duration: {metadata['duration']:.2f}s")
     print(f"✓ Segmentation: {metadata['segmentation_method']}")
-    print(f"✓ Embedder: {metadata['embedder']} (layer {metadata['layer']})")
+    print(f"✓ Features: {metadata['features']} (layer {metadata['layer']})")
     print(f"✓ Pooling: {metadata['pooling']}")
     print(f"✓ Syllables found: {metadata['num_syllables']}")
     print(f"✓ Embeddings shape: {embeddings.shape}")
@@ -166,7 +166,7 @@ def test_step_by_step():
     print(f"✓ Audio loaded: {len(audio)} samples at {sr} Hz")
     
     # Step 2: Segment
-    syllables, _, _ = segment_audio(audio_path, method='peaks_and_valleys', samplerate=sr)
+    syllables, _, _ = segment_audio(audio_path, method='peakdetect', samplerate=sr)
     print(f"✓ Segmented into {len(syllables)} syllables")
     
     # Step 3: Extract features
@@ -236,11 +236,11 @@ def test_mix_methods():
     audio_path = 'test_samples/SP20_117.wav'
     
     # Classical segmentation + classical embedding
-    print("\n1. peaks_and_valleys + MFCC...")
+    print("\n1. peakdetect + MFCC...")
     emb1, _ = embed_audio(
         audio_path,
-        segmentation='peaks_and_valleys',
-        embedder='mfcc',
+        segmentation='peakdetect',
+        features='mfcc',
         pooling='mean'
     )
     print(f"   ✓ Shape: {emb1.shape}")
@@ -252,17 +252,17 @@ def test_mix_methods():
         emb2, _ = embed_audio(
             audio_path,
             segmentation='sylber',
-            embedder='mfcc',
+            features='mfcc',
             pooling='mean'
         )
         print(f"   ✓ Shape: {emb2.shape}")
         
         # Classical segmentation + neural embedding
-        print("\n3. peaks_and_valleys segmentation + Sylber embedding...")
+        print("\n3. peakdetect segmentation + Sylber embedding...")
         emb3, _ = embed_audio(
             audio_path,
-            segmentation='peaks_and_valleys',
-            embedder='sylber',
+            segmentation='peakdetect',
+            features='sylber',
             pooling='mean'
         )
         print(f"   ✓ Shape: {emb3.shape}")

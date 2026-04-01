@@ -1,6 +1,6 @@
 # VG-HuBERT Implementation
 
-VG-HuBERT (Visually Grounded HuBERT) syllable segmentation has been successfully implemented in findsylls!
+VG-HuBERT (Visually Grounded HuBERT) syllable segmentation has been successfully integrated into findsylls using the `vg-hubert` PyPI package!
 
 ## Quick Start
 
@@ -8,13 +8,13 @@ VG-HuBERT (Visually Grounded HuBERT) syllable segmentation has been successfully
 from findsylls.segmentation.end2end import VGHubertSegmenter
 from findsylls.audio.utils import load_audio
 
-# Create segmenter
+# Create segmenter - model downloads automatically from HuggingFace!
 segmenter = VGHubertSegmenter(
-    model_path='/path/to/vg-hubert_3',  # Download from link below
-    layer=8,                             # Which HuBERT layer (default: 8)
-    sec_per_syllable=0.2,               # Target syllable duration (default: 0.2)
-    merge_threshold=0.3,                 # Merge similar segments (optional)
-    device='cuda'                        # Use 'cuda', 'cpu', or 'mps'
+    model_ckpt='hjvm/VG-HuBERT',  # Auto-downloads (default)
+    mode='syllable',              # 'syllable' or 'word'
+    layer=8,                      # HuBERT layer (default: 8 for syllables)
+    merge_threshold=0.3,          # MinCutMerge post-processing (recommended)
+    device='cuda'                 # Use 'cuda', 'cpu', or 'mps'
 )
 
 # Segment audio
@@ -26,79 +26,83 @@ for start, peak, end in syllables:
     print(f"Syllable: {start:.3f}s to {end:.3f}s (nucleus at {peak:.3f}s)")
 ```
 
+## Installation
+
+```bash
+# Install findsylls with embedding support
+pip install 'findsylls[embedding]'
+
+# Install vg-hubert package
+pip install vg-hubert
+```
+
 ## Model Download
 
-Download the pre-trained VG-HuBERT model:
+**No manual download required!** The vg-hubert package automatically downloads the model from HuggingFace Hub (hjvm/VG-HuBERT) on first use.
 
-**Option 1: VG-HuBERT_3 (recommended for syllables)**
-```bash
-wget https://www.cs.utexas.edu/~harwath/model_checkpoints/vg_hubert/vg-hubert_3.tar
-tar -xf vg-hubert_3.tar
+For offline use or local models:
+```python
+# Use local model directory
+segmenter = VGHubertSegmenter(
+    model_ckpt='/path/to/local/vg-hubert_3'
+)
 ```
-
-**Option 2: Use transformers HuBERT (fallback)**
-```bash
-pip install transformers
-# VGHubertSegmenter will automatically use facebook/hubert-base-ls960
-```
-
-The model directory should contain:
-- `best_bundle.pth` - Model weights (best for syllables)
-- `snapshot_20.pth` - Alternative checkpoint (better for words)
-- `args.pkl` - Model configuration
 
 ## How It Works
 
 VG-HuBERT uses a two-stage segmentation approach:
 
 ### 1. Feature Extraction
-- Audio → VG-HuBERT → Layer 8 features (typically 768-dim)
+- Audio → VG-HuBERT → Layer 8 features (768-dim)
 - VG-HuBERT is trained on SpokenCOCO (audio-image pairs)
 - Features capture visually-grounded speech representations
 
 ### 2. MinCut Segmentation
 - Compute self-similarity matrix: `SSM = features @ features.T`
 - Estimate number of syllables: `K = ceil(audio_duration / 0.2)`
-- Run MinCut algorithm to partition SSM into K segments
-- MinCut minimizes inter-segment similarity (finds natural boundaries)
+- Run optimized MinCut algorithm (40x faster than original)
+- Optional MinCutMerge post-processing to prevent over-segmentation
 
-### 3. Optional Merging
-- Compute cosine similarity between adjacent segments
-- Merge segments where `similarity >= merge_threshold`
-- Typical threshold: 0.3-0.4
+### 3. Optional Peak Detection
+- Detect syllable nuclei using feature norm peaks
+- Enable with `detect_peaks=True`
 
 ## Parameters
 
 ### Required
-- `model_path` (str): Path to VG-HuBERT checkpoint directory
+- **model_ckpt** (str, default='hjvm/VG-HuBERT'): HuggingFace model or local path
+  - Default auto-downloads from HuggingFace Hub
+  - Can specify local path for offline use
 
 ### Optional
-- `layer` (int, default=8): Which HuBERT layer to use (0-11)
-  - Layer 8 works best for syllables
-  - Try different layers for different granularities
+- **mode** (str, default='syllable'): Segmentation mode
+  - `'syllable'`: MinCut-based syllable segmentation
+  - `'word'`: Attention-based word segmentation
   
-- `sec_per_syllable` (float, default=0.2): Target syllable duration
+- **layer** (int, optional): Which HuBERT layer to use
+  - Default: 8 for syllables, 9 for words
+  - Range: 0-11
+  
+- **sec_per_syllable** (float, default=0.2): Target syllable duration
   - 0.15-0.2 works well for English
   - Adjust for other languages
   
-- `merge_threshold` (float, optional): Cosine similarity threshold for merging
+- **merge_threshold** (float, default=0.3): Cosine similarity threshold for merging
+  - Recommended: 0.3 (matches original paper)
   - `None`: No merging (more segments)
-  - `0.3-0.4`: Typical range (fewer segments)
-  - Higher = more aggressive merging
+  - `0.3-0.4`: Typical range
+  - Higher = more merging = fewer segments
   
-- `reduce_method` (str, default='mean'): How to pool features within segments
-  - `'mean'`: Average pooling (most common)
-  - `'max'`: Max pooling
-  - `'median'`: Median pooling
+- **min_segment_frames** (int, default=2): Filter very short segments
   
-- `device` (str, default='cpu'): Compute device
+- **device** (str, default='cpu'): Compute device
   - `'cuda'`: NVIDIA GPU (fastest)
   - `'mps'`: Apple Silicon GPU
   - `'cpu'`: CPU (slowest)
   
-- `snapshot` (str, default='best'): Which checkpoint to load
-  - `'best'`: Load best_bundle.pth (better for syllables)
-  - `20`: Load snapshot_20.pth (better for words)
+- **detect_peaks** (bool, default=False): Detect nucleus peaks
+  - `False`: Use segment midpoint
+  - `True`: Detect peak using feature norms
 
 ## Performance
 
@@ -111,42 +115,13 @@ From Peng et al. (2023) on SpokenCOCO test set:
 | Boundary F1 | 0.60 |
 | Over-segmentation | 0.11 |
 
+**Optimization**: This fork uses an optimized MinCut algorithm (~40x speedup) from [SyllableLM](https://github.com/AlanBaade/SyllableLM).
+
 Works across multiple languages:
 - English (SpokenCOCO)
 - French (ZeroSpeech 2020)
 - Mandarin (ZeroSpeech 2020)
 - Estonian Conversational Speech
-
-## Implementation Details
-
-### MinCut Algorithm
-The MinCut algorithm uses dynamic programming to find optimal segment boundaries:
-
-```python
-from findsylls.segmentation.algorithms.mincut import min_cut
-import numpy as np
-
-# Create self-similarity matrix
-features = model.extract_features(audio)  # Shape: (T, D)
-ssm = features @ features.T               # Shape: (T, T)
-ssm = ssm - np.min(ssm) + 1e-7           # Make non-negative
-
-# Segment into K boundaries (K-1 segments)
-K = 11  # For 10 segments
-boundaries = min_cut(ssm, K)
-# Returns: [0, 8, 19, 31, ..., T-1]
-```
-
-The algorithm minimizes:
-```
-cost = inter_segment_similarity / total_similarity
-```
-
-Where:
-- `inter_segment_similarity`: Similarity between [j:i] and rest of frames
-- `total_similarity`: Total similarity involving [j:i]
-
-This effectively finds boundaries where feature similarity "cuts" are minimal.
 
 ### Pure Python Implementation
 Our implementation is pure Python (no Cython compilation needed):

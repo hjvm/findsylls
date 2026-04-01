@@ -41,8 +41,8 @@ def main():
     
     results = embed_corpus(
         audio_files=audio_files,
-        segmentation='peaks_and_valleys',  # Classical segmentation
-        embedder='mfcc',                   # Fast CPU-based features
+        segmentation='peakdetect',  # Classical segmentation
+        features='mfcc',                   # Fast CPU-based features
         pooling='mean',
         n_jobs=4,                          # Parallel processing
         verbose=True,                      # Show progress
@@ -68,8 +68,8 @@ def main():
             print(f"  Duration: {duration:.2f}s")
             print(f"  Syllables: {n_sylls}")
             print(f"  Embeddings: {shape}")
-            print(f"  Segmentation: {result['metadata']['segmentation']}")
-            print(f"  Embedder: {result['metadata']['embedder']}")
+            print(f"  Segmentation: {result['metadata']['segmentation_method']}")
+            print(f"  Features: {result['metadata']['features']}")
         else:
             print(f"\n{Path(result['audio_path']).name}: FAILED")
             print(f"  Error: {result['error']}")
@@ -119,27 +119,27 @@ def main():
     print("PART 5: Comparing Different Methods")
     print("="*70)
     
-    # Try different embedder configurations
+    # Try different feature configurations
     configs = [
         {
             'name': 'MFCC (13-dim)',
-            'embedder': 'mfcc',
-            'embedder_kwargs': {}
+            'features': 'mfcc',
+            'feature_kwargs': {}
         },
         {
             'name': 'MFCC + Delta (26-dim)',
-            'embedder': 'mfcc',
-            'embedder_kwargs': {'include_delta': True}
+            'features': 'mfcc',
+            'feature_kwargs': {'include_delta': True}
         },
         {
             'name': 'MFCC + Delta + Delta-Delta (39-dim)',
-            'embedder': 'mfcc',
-            'embedder_kwargs': {'include_delta': True, 'include_delta_delta': True}
+            'features': 'mfcc',
+            'feature_kwargs': {'include_delta': True, 'include_delta_delta': True}
         },
         {
             'name': 'Mel-spectrogram (80-dim)',
-            'embedder': 'melspec',
-            'embedder_kwargs': {}
+            'features': 'melspec',
+            'feature_kwargs': {}
         }
     ]
     
@@ -154,10 +154,10 @@ def main():
         
         embeddings, meta = embed_audio(
             audio_path=str(test_file),
-            segmentation='peaks_and_valleys',
-            embedder=config['embedder'],
+            segmentation='peakdetect',
+            features=config['features'],
             pooling='mean',
-            embedder_kwargs=config['embedder_kwargs']
+            feature_kwargs=config['feature_kwargs']
         )
         
         comparison_results[config['name']] = {
@@ -210,7 +210,7 @@ def main():
         sylber_result = embed_audio(
             audio_path=str(audio_files[0]),
             segmentation='sylber',
-            embedder='sylber',
+            features='sylber',
             pooling='mean'
         )
         
@@ -224,7 +224,7 @@ def main():
         print("\nFor full corpus with Sylber:")
         print("  results = embed_corpus(")
         print("      audio_files,")
-        print("      embedder='sylber',")
+        print("      features='sylber',")
         print("      n_jobs=1,  # Sequential for GPU models")
         print("      verbose=True")
         print("  )")

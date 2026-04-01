@@ -59,12 +59,12 @@ def extract_with_findsylls(
     # Use provided boundaries if given
     if syllable_boundaries is None:
         from findsylls.pipeline.pipeline import segment_audio as segment_audio_pipeline
-        # Use OLD spot_the_word defaults: envelope_fn='sbs', segment_fn='peaks_and_valleys'
+        # Use OLD spot_the_word defaults: envelope_fn='sbs', segment_fn='peakdetect'
         syllables, _, _ = segment_audio_pipeline(
             audio_file=audio_path,
             samplerate=16000,
             envelope_fn='sbs',
-            segment_fn='peaks_and_valleys'
+            segment_fn='peakdetect'
         )
     else:
         syllables = syllable_boundaries
