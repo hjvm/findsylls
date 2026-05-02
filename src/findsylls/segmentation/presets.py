@@ -20,6 +20,7 @@ from typing import List, Tuple, Optional
 import numpy as np
 
 from .base import End2EndSegmenter
+from .cls_attention import CLSAttentionSegmenter
 from .greedy_cosine import GreedyCosineSegmenter
 from .mincut import MinCutSegmenter
 from ..features import SylberFeatureExtractor, VGHuBERTFeatureExtractor
@@ -182,56 +183,65 @@ class VGHubertMinCutSegmenter(End2EndSegmenter):
 
 class VGHubertCLSSegmenter(End2EndSegmenter):
     """
-    VG-HuBERT with CLS attention segmentation (Peng et al. 2023).
-    
-    Uses VG-HuBERT CLS token attention for boundary detection:
-    - Feature extractor: VG-HuBERT (layer 8 for syllables, 9 for words)
-    - Algorithm: Peak detection in CLS attention scores
-    - Default thresholds tuned for syllable segmentation
-    
-    The CLS token (first token) in transformers attends to different sequence positions.
-    Peaks in CLS attention correspond to salient positions (syllable/word onsets).
-    
+    VG-HuBERT with CLS attention segmentation (Peng & Harwath 2022).
+
+    Replicates the word-discovery paper's canonical configuration:
+    - Feature extractor: VG-HuBERT word checkpoint (layer 9)
+    - Algorithm: CLS-token attention thresholding with per-head quantile union
+
+    This is the configuration described in Peng & Harwath (Interspeech 2022), which
+    introduced CLS attention segmentation using the word-level VG-HuBERT checkpoint.
+    Use mode='syllable' only if you want layer-8 syllable-checkpoint features with
+    CLS attention — that is not the canonical published configuration.
+
     Reference:
-        Peng, P., et al. (2023). "Syllable Discovery and Cross-Lingual Generalization 
-        in a Visually Grounded, Self-Supervised Speech Model." Interspeech 2023.
-    
+        Peng, P., & Harwath, D. (2022). "Self-Supervised Representation Learning for
+        Speech Using Visual Grounding and Masked Language Modeling."
+        Interspeech 2022. (word-discovery repo)
+
     Args:
         layer: VG-HuBERT layer (default: None = auto-select from mode)
-        mode: Granularity - 'syllable' or 'word' (default: 'syllable')
+        mode: Checkpoint and layer selection — 'word' (default, layer 9, word checkpoint)
+              or 'syllable' (layer 8, syllable checkpoint).
         attn_threshold: Attention peak height threshold (default: 0.1)
-        min_distance: Minimum distance between peaks in seconds (default: 0.05 for syllables)
+        min_distance: Minimum distance between peaks in seconds (default: 0.05)
         device: Device for model ('cuda', 'cpu', or None for auto-detect)
         sample_rate: Target sample rate (default: 16000)
-    
+
     Example:
-        >>> # Syllable segmentation (auto layer=8, spacing ~50ms)
-        >>> segmenter = VGHubertCLSSegmenter(mode='syllable')
+        >>> # Canonical word-discovery CLS segmentation (default)
+        >>> segmenter = VGHubertCLSSegmenter()
         >>> segments = segmenter.segment(audio, sr=16000)
-        >>> 
-        >>> # Word segmentation (auto layer=9, spacing ~200ms)
-        >>> word_segmenter = VGHubertCLSSegmenter(mode='word', min_distance=0.2)
+        >>>
+        >>> # Syllable-checkpoint variant (non-canonical)
+        >>> syl_segmenter = VGHubertCLSSegmenter(mode='syllable')
     """
-    
+
     def __init__(
         self,
         layer: Optional[int] = None,
-        mode: str = 'syllable',
+        mode: str = 'word',
         attn_threshold: float = 0.1,
         min_distance: float = 0.05,
         device: Optional[str] = None,
         sample_rate: int = 16000
     ):
         super().__init__(sample_rate=sample_rate)
-        
-        # Create feature extractor (will auto-load eager attention when needed)
-        self.feature_extractor = VGHuBERTFeatureExtractor(
+        self._segmenter = CLSAttentionSegmenter(
+            feature_extractor=VGHuBERTFeatureExtractor(
+                layer=layer,
+                mode=mode,
+                device=device,
+            ),
             layer=layer,
             mode=mode,
-            device=device
+            threshold=attn_threshold,
+            min_distance=min_distance,
+            device=device,
+            sample_rate=sample_rate,
         )
-        
-        self.layer = self.feature_extractor.layer
+
+        self.layer = self._segmenter.layer
         self.mode = mode
         self.attn_threshold = attn_threshold
         self.min_distance = min_distance
@@ -254,31 +264,7 @@ class VGHubertCLSSegmenter(End2EndSegmenter):
         Returns:
             List of (start, nucleus, end) tuples in seconds
         """
-        from ..segmentation.cls_attention import segment_by_cls_attention
-        
-        # Extract features and CLS attention scores
-        features, cls_attention = self.feature_extractor.extract(
-            audio, sr, return_attention=True
-        )
-        
-        # Compute times array
-        frame_rate = self.feature_extractor.frame_rate
-        times = np.arange(len(cls_attention)) / frame_rate
-        
-        # Override defaults with kwargs
-        threshold = kwargs.get('attn_threshold', self.attn_threshold)
-        min_dist = kwargs.get('min_distance', self.min_distance)
-        
-        # Segment using CLS attention peaks
-        segments = segment_by_cls_attention(
-            attention_scores=cls_attention,
-            times=times,
-            threshold=threshold,
-            min_distance=min_dist,
-            frame_rate=frame_rate
-        )
-        
-        return segments
+        return self._segmenter.segment(audio, sr, **kwargs)
 
 
 class SyllableLMSegmenter(End2EndSegmenter):
