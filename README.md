@@ -260,7 +260,7 @@ save_embeddings(results, "embeddings.npz")
 For datasets that don't fit in RAM, write embeddings directly to disk:
 
 ```python
-from findsylls import embed_corpus_to_storage
+from findsylls.embedding import embed_corpus_to_storage
 
 bundle = embed_corpus_to_storage(
     audio_files=["a.wav", "b.wav", ...],
@@ -281,7 +281,7 @@ print(f"Embedded {bundle['num_success']}/{bundle['num_files']} files")
 from findsylls.embedding import EmbeddingPipeline
 
 pipeline = EmbeddingPipeline(preset="sylber", pooling="mean")
-embeddings, metadata = pipeline.embed("audio.wav", return_metadata=True)
+embeddings, metadata = pipeline.embed_audio("audio.wav", return_metadata=True)
 ```
 
 **Available pooling methods:** `mean`, `max`, `median`, `onc`
@@ -315,7 +315,7 @@ print(result.fit_metrics["davies_bouldin"])
 #### Streaming clustering (corpus too large for RAM)
 
 ```python
-from findsylls import embed_corpus_to_storage
+from findsylls.embedding import embed_corpus_to_storage
 from findsylls.discovery import DiscoveryPipeline
 
 bundle = embed_corpus_to_storage(audio_files=[...], output_dir="./embeddings",

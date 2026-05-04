@@ -154,7 +154,7 @@ class VGHuBERTFeatureExtractor(FeatureExtractor):
         except ImportError:
             raise ImportError(
                 "vg-hubert and torch required for VGHuBERTFeatureExtractor. "
-                "Install with: pip install vg-hubert torch"
+                "Install with: pip install 'findsylls[end2end]'"
             )
         
         # Determine device (only once)

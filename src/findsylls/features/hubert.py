@@ -161,7 +161,7 @@ class HuBERTExtractor(FeatureExtractor):
         except ImportError:
             raise ImportError(
                 "transformers and torch required for HuBERTExtractor. "
-                "Install with: pip install transformers torch"
+                "Install with: pip install 'findsylls[embedding]'"
             )
         
         model_kwargs = {}

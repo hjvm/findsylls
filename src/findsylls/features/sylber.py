@@ -149,8 +149,8 @@ class SylberFeatureExtractor(FeatureExtractor):
             import torch
         except ImportError:
             raise ImportError(
-                "transformers and torch required for SylberFeatureExtractor. "
-                "Install with: pip install transformers torch huggingface-hub"
+                "sylber, transformers, and torch required for SylberFeatureExtractor. "
+                "Install with: pip install 'findsylls[end2end]'"
             )
         
         # Determine device
