@@ -24,7 +24,11 @@ htmlcov/
 # Local artifacts
 *.sylls.json
 figures/
-data/kono
+data/
+examples/
+
+# Research notebooks (not user demos)
+research_evaluation.ipynb
 
 # Notebook / evaluation outputs
 output/
