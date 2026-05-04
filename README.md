@@ -137,7 +137,7 @@ Preset classes replicate the exact configurations from published papers:
 
 ```python
 from findsylls.segmentation.presets import (
-    SylberSegmenter,          # Park et al. 2024 — greedy cosine on Sylber HuBERT
+    SylberSegmenter,          # Cho et al. 2025 — greedy cosine on Sylber HuBERT
     VGHubertMinCutSegmenter,  # Peng et al. 2023 — SSM MinCut on VG-HuBERT
     VGHubertCLSSegmenter,     # Peng & Harwath 2022 — CLS attention on VG-HuBERT
 )

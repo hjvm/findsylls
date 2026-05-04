@@ -27,8 +27,8 @@ figures/
 data/
 examples/
 
-# Research notebooks (not user demos)
-research_evaluation.ipynb
+# Notebooks (test batteries and research notebooks kept off the public repo)
+*.ipynb
 
 # Notebook / evaluation outputs
 output/

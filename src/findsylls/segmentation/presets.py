@@ -10,7 +10,7 @@ For flexibility and custom configurations, use the generic wrappers:
 - GreedyCosineSegmenter(feature_extractor, **params)
 
 Available presets:
-- SylberSegmenter: Sylber with greedy cosine (Park et al. 2024)
+- SylberSegmenter: Sylber with greedy cosine (Cho et al. 2025)
 - VGHubertMinCutSegmenter: VG-HuBERT with SSM + MinCut (Peng et al. 2023)
 - VGHubertCLSSegmenter: VG-HuBERT with CLS attention (Peng et al. 2023)
 """
@@ -27,19 +27,20 @@ from ..features import SylberFeatureExtractor, VGHuBERTFeatureExtractor
 
 class SylberSegmenter(End2EndSegmenter):
     """
-    Sylber syllable segmentation (Park et al. 2024).
-    
+    Sylber syllable segmentation (Cho et al. 2025).
+
     Replicates the paper's default configuration:
     - Feature extractor: Sylber's fine-tuned HuBERT (layer 9, 768-dim)
     - Algorithm: Greedy cosine similarity with boundary refinement
     - Hyperparameters: norm_threshold=2.6, merge_threshold=0.8
-    
+
     This is a convenience wrapper equivalent to:
         GreedyCosineSegmenter(SylberFeatureExtractor(), norm_threshold=2.6, merge_threshold=0.8)
-    
+
     Reference:
-        Park, C. J., Lai, P. C., & Dupoux, E. (2024). "Sylber: Syllabic Embedding 
-        Representation of Speech from Raw Audio." arXiv:2410.14336.
+        Cho, C. J., Lee, N., Gupta, A., Agarwal, D., Chen, E., Black, A. W., &
+        Anumanchipalli, G. K. (2025). "Sylber: Syllabic Embedding Representation
+        of Speech from Raw Audio." ICLR 2025. arXiv:2410.07168.
     
     Args:
         norm_threshold: Energy threshold for silence detection (default: 2.6)

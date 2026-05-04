@@ -6,7 +6,7 @@ All tests use real audio from test_samples/ — no synthetic data.
 
 Pipelines under test
 --------------------
-1. Sylber + Greedy Cosine  (Park et al., ICLR 2025)
+1. Sylber + Greedy Cosine  (Cho et al., ICLR 2025)
 2. VG-HuBERT (word ckpt, layer 9) + CLS attention  (Peng & Harwath, Interspeech 2022)
 3. VG-HuBERT (syllable ckpt, layer 8) + MinCut DP  (Peng et al., Interspeech 2023)
 
@@ -290,7 +290,7 @@ class TestSylberGreedyCosineParity:
     """
     Parity for the Sylber + Greedy Cosine pipeline.
 
-    Reference: Park et al. (ICLR 2025) — cheoljun95/sylber on HuggingFace Hub,
+    Reference: Cho et al. (ICLR 2025) — cheoljun95/sylber on HuggingFace Hub,
     get_segment() in reference_repos/sylber/sylber/utils/segment_utils.py.
     """
 

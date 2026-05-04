@@ -24,8 +24,9 @@ Original implementation:
 https://github.com/Berkeley-Speech-Group/sylber/blob/main/sylber/utils/segment_utils.py
 
 Reference:
-Park, C. J., Lai, P. C., & Dupoux, E. (2024). "Sylber: Syllabic Embedding Representation
-of Speech from Raw Audio." arXiv preprint arXiv:2410.14336.
+Cho, C. J., Lee, N., Gupta, A., Agarwal, D., Chen, E., Black, A. W., & Anumanchipalli, G. K.
+(2025). "Sylber: Syllabic Embedding Representation of Speech from Raw Audio." ICLR 2025.
+arXiv:2410.07168.
 """
 
 import numpy as np
@@ -289,8 +290,9 @@ def greedy_cosine_segment(
     
     References
     ----------
-    .. [1] Park, C. J., Lai, P. C., & Dupoux, E. (2024). "Sylber: Syllabic 
-       Embedding Representation of Speech from Raw Audio." arXiv:2410.14336.
+    .. [1] Cho, C. J., Lee, N., Gupta, A., Agarwal, D., Chen, E., Black, A. W., &
+       Anumanchipalli, G. K. (2025). "Sylber: Syllabic Embedding Representation of
+       Speech from Raw Audio." ICLR 2025. arXiv:2410.07168.
     """
     # Input validation
     if features.ndim != 2:
