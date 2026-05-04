@@ -87,7 +87,7 @@ wav → load_audio() → (audio, sr)
 
 ## Evaluation Conventions
 
-- Tier specification via `tiers` dict: `tiers={'phone': 2, 'syllable': 1, 'word': 0}`. Legacy kwargs (`phone_tier`, `syllable_tier`, `word_tier`) still work.
+- Tier specification via `tiers` dict: `tiers={'phone': 2, 'syllable': 1, 'word': 0}`. There are no legacy `phone_tier`/`syllable_tier`/`word_tier` kwargs — always use the `tiers` dict.
 - The `phone` tier drives `nuclei` evaluation; all other tiers generate `{name}_boundaries` and `{name}_spans` keys.
 - `flatten_results()` dynamically detects all evaluation keys — no constant maintenance needed when adding tiers.
 - Do not hardcode the 0.05 s tolerance outside of `config/constants.py`; pass it via `tolerance` arg.
