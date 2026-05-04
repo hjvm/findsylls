@@ -8,8 +8,8 @@ Language-agnostic toolkit for unsupervised syllable-level speech segmentation, e
 
 findsylls provides a full pipeline from raw audio to clustered syllable embeddings:
 
-- **Envelope computation** — RMS, Hilbert, low-pass, SBS, gammatone, theta, and neural pseudo-envelopes
-- **Syllable segmentation** — classical peak detection and neural end-to-end methods (Sylber, VG-HuBERT, SyllableLM)
+- **Envelope computation** — RMS, Hilbert, low-pass, SBS, theta, and neural pseudo-envelopes
+- **Syllable segmentation** — classical peak detection and neural end-to-end methods (Sylber, VG-HuBERT)
 - **Feature extraction** — MFCC, mel spectrogram, HuBERT, Sylber, VG-HuBERT
 - **Syllable embedding** — pooled per-syllable vectors for downstream tasks
 - **Unsupervised discovery** — k-means, mini-batch k-means, agglomerative clustering
@@ -97,7 +97,7 @@ from findsylls import get_amplitude_envelope
 envelope, times = get_amplitude_envelope(audio, sr, method="theta")
 ```
 
-**Available envelope methods:** `rms`, `hilbert`, `lowpass`, `sbs`, `gammatone`, `theta`, `cls_attention`, `greedy_cosine`, `mincut`
+**Available envelope methods:** `rms`, `hilbert`, `lowpass`, `sbs`, `theta`, `cls_attention`, `greedy_cosine`, `mincut`
 
 ---
 
@@ -140,7 +140,6 @@ from findsylls.segmentation.presets import (
     SylberSegmenter,          # Park et al. 2024 — greedy cosine on Sylber HuBERT
     VGHubertMinCutSegmenter,  # Peng et al. 2023 — SSM MinCut on VG-HuBERT
     VGHubertCLSSegmenter,     # Peng & Harwath 2022 — CLS attention on VG-HuBERT
-    SyllableLMSegmenter,      # Baade et al. 2024 — DP MinCut on HuBERT
 )
 from findsylls.audio.utils import load_audio
 
@@ -506,13 +505,13 @@ findsylls evaluate "data/**/*.wav" "data/**/*.TextGrid" \
 ## Methods Reference
 
 ### Envelope methods
-`rms` · `hilbert` · `lowpass` · `sbs` · `gammatone` · `theta` · `cls_attention` · `greedy_cosine` · `mincut`
+`rms` · `hilbert` · `lowpass` · `sbs` · `theta` · `cls_attention` · `greedy_cosine` · `mincut`
 
 ### Segmentation methods (dispatch strings)
 `peakdetect` · `cls_attention` · `mincut` · `greedy_cosine`
 
 ### Preset segmenters (paper-replication classes)
-`SylberSegmenter` · `VGHubertMinCutSegmenter` · `VGHubertCLSSegmenter` · `SyllableLMSegmenter`
+`SylberSegmenter` · `VGHubertMinCutSegmenter` · `VGHubertCLSSegmenter`
 
 ### Feature extractors
 `mfcc` · `melspectrogram` · `hubert` · `sylber` · `vghubert`
@@ -522,13 +521,6 @@ findsylls evaluate "data/**/*.wav" "data/**/*.TextGrid" \
 
 ### Discovery methods
 `kmeans` · `minibatch_kmeans` · `agglomerative`
-
----
-
-## Examples and Notebook
-
-- Interactive demo: [findsylls_demo.ipynb](findsylls_demo.ipynb)
-- Example scripts: [examples/](examples/)
 
 ---
 
