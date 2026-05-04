@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "findsylls"
-version = "3.0.0"
+version = "3.0.1"
 description = "Unsupervised syllable segmentation, evaluation, and embedding extraction toolkit for speech audio"
 readme = "README.md"
 dynamic = []
 authors = [
-  { name = "Héctor Javier" }
+  { name = "Héctor Javier Vázquez Martínez" }
 ]
 license = "MIT"
 requires-python = ">=3.9"
@@ -43,10 +43,9 @@ storage = [
   "h5py>=3.8",  # HDF5 storage for large embedding datasets
 ]
 embedding = [
-  "torch>=2.0",  # Required for neural embedders (VG-HuBERT, etc.)
+  "torch>=2.0",
   "torchaudio>=2.0",
   "transformers>=4.30",
-  "vg-hubert>=1.0.0",  # VG-HuBERT feature extraction
 ]
 all = [
   "matplotlib",

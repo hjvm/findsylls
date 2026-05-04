@@ -1,10 +1,5 @@
 include README.md
 include LICENSE
-recursive-exclude test_samples *
-recursive-exclude tests *
-recursive-exclude legacy *
-include README.md
-include LICENSE
 
 # Package source (src layout)
 recursive-include src/findsylls *.py

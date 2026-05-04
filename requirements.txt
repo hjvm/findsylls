@@ -34,9 +34,9 @@ gammatone>=1.0.0
 # torch>=2.0.0
 # torchaudio>=2.0.0
 
-########## Notebook / plotting enhancements ##########
-# Used in the example & analysis notebooks.
-seaborn>=0.12
+########## Notebook / plotting enhancements (optional) ##########
+# seaborn is in the findsylls[viz] extra, not required for core use.
+# seaborn>=0.12
 
 ########## Development / QA (optional) ##########
 # Uncomment if you are running tests, style, or type checks locally.

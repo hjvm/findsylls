@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.1] - 2026-05-04
+
+### Removed
+- `SyllableLMSegmenter` preset class and `"syllablelm"` preset: the class used
+  vanilla HuBERT but the SyllableLM paper used Data2Vec2 features — substituting
+  a different extractor under that name was incorrect. The DP algorithm
+  (`MinCutSegmenter(use_reference=True)`) and its parity tests are unaffected.
+- Stale repository artifacts: `examples/` (all scripts broken on v3 API),
+  `docs/FINDSYLLS_USER_GUIDE.md`, `docs/VALIDATION_RESULTS.md`,
+  `docs/VG_HUBERT_README.md` (all superseded by README), 8 tracked `data/`
+  symlinks pointing to local machine paths, `.github/copilot-instructions.md`
+  (v1.x guidance, entirely wrong for v3).
+- `findsylls_demo.ipynb` renamed to `research_evaluation.ipynb` (Interspeech
+  2026 research notebook, not a user demo).
+
+### Fixed
+- `gammatone` removed from all public envelope method lists in README and
+  dispatch docs — it is internal preprocessing used only by the `theta`
+  oscillator, never a standalone callable method.
+- `pyproject.toml`: removed `vg-hubert` from the `embedding` extra (VG-HuBERT
+  is an end-to-end segmenter, not an embedding dep); completed author name.
+- `MANIFEST.in`: removed duplicate `include README.md` / `include LICENSE` lines.
+- `requirements.txt`: `seaborn` moved to optional/commented section (it is in
+  the `viz` extra, not a core runtime dependency).
+
 ## [3.0.0] - 2026-04-01
 
 ### BREAKING CHANGES
