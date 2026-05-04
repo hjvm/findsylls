@@ -4,312 +4,535 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/findsylls.svg)](https://pypi.org/project/findsylls/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Language-agnostic toolkit for syllable-level speech tokenization and embedding extraction.
+Language-agnostic toolkit for unsupervised syllable-level speech segmentation, embedding extraction, and evaluation.
 
-findsylls provides:
-- Envelope computation from waveform (RMS, Hilbert, low-pass, SBS, gammatone, theta)
-- Syllable segmentation (peak/valley and neural options)
-- Evaluation against TextGrid annotations (nuclei, boundaries, spans)
-- Per-syllable embedding extraction for downstream tasks
+findsylls provides a full pipeline from raw audio to clustered syllable embeddings:
+
+- **Envelope computation** — RMS, Hilbert, low-pass, SBS, gammatone, theta, and neural pseudo-envelopes
+- **Syllable segmentation** — classical peak detection and neural end-to-end methods (Sylber, VG-HuBERT, SyllableLM)
+- **Feature extraction** — MFCC, mel spectrogram, HuBERT, Sylber, VG-HuBERT
+- **Syllable embedding** — pooled per-syllable vectors for downstream tasks
+- **Unsupervised discovery** — k-means, mini-batch k-means, agglomerative clustering
+- **Evaluation** — F1 against TextGrid annotations at phone, syllable, and word granularity
+- **Visualization** — waveform, envelope, segmentation, and feature-matrix plots
+
+---
 
 ## Install
 
 ```bash
-# Core package
-pip install findsylls
-
-# Optional extras
-pip install 'findsylls[viz]'       # plotting helpers
-pip install 'findsylls[embedding]' # neural feature extraction
-pip install 'findsylls[end2end]'   # neural segmentation methods
-pip install 'findsylls[storage]'   # HDF5 storage support
-pip install 'findsylls[all]'       # all extras
+pip install findsylls                  # core (classical methods)
+pip install 'findsylls[embedding]'     # neural feature extraction (HuBERT, VG-HuBERT)
+pip install 'findsylls[end2end]'       # neural segmenters (Sylber, VG-HuBERT)
+pip install 'findsylls[viz]'           # plotting extras
+pip install 'findsylls[storage]'       # HDF5 corpus storage
+pip install 'findsylls[all]'           # everything
 ```
+
+---
 
 ## Quick Start
 
-### 1) Segment a file into syllables
+### 1 — Segment audio into syllables
 
 ```python
 from findsylls import segment_audio
 
-sylls, envelope, times = segment_audio(
-    "example.wav",
-    envelope_fn="sbs",
-  segment_fn="peakdetect",
+# Classical: peak detection on an SBS amplitude envelope
+syllables, envelope, times = segment_audio(
+    "audio.wav",
+    method="peakdetect",
+    segmentation_kwargs={"envelope_method": "sbs"},
+    return_envelope=True,
 )
 
-print(f"Found {len(sylls)} syllables")
-# sylls: [(start, peak, end), ...]
+print(f"Found {len(syllables)} syllables")
+# syllables: [(start_s, nucleus_s, end_s), ...]
 ```
 
-### 2) Evaluate against TextGrid annotations
+![Syllable segmentation on a sample utterance](docs/images/quickstart_segmentation.png)
+
+*Waveform (gray), SBS amplitude envelope (blue), syllable boundaries (green), and detected nuclei (red dots) for a sample utterance.*
+
+---
+
+## Module Guide
+
+### Envelope (`findsylls.envelope`)
+
+The envelope module converts a raw audio waveform into a 1-D amplitude signal. All computers implement `EnvelopeComputer.compute(audio, sr) → (envelope, times)`.
 
 ```python
-from findsylls import run_evaluation, aggregate_results
-
-results = run_evaluation(
-    textgrid_paths="data/**/*.TextGrid",
-    wav_paths="data/**/*.wav",
-    phone_tier=1,
-    syllable_tier=2,
-    word_tier=3,
-    envelope_fn="hilbert",
+from findsylls.audio.utils import load_audio
+from findsylls.envelope import (
+    RMSEnvelope, HilbertEnvelope, ThetaEnvelope, SBSEnvelope,
+    LowpassEnvelope, CLSAttentionEnvelope, GreedyCosineEnvelope,
 )
+from findsylls.plotting import plot_multiple_envelopes
 
-summary = aggregate_results(results, dataset_name="MyCorpus")
-print(summary)
+audio, sr = load_audio("audio.wav")
+
+envelopes = {}
+for name, computer in [
+    ("RMS",     RMSEnvelope()),
+    ("Hilbert", HilbertEnvelope()),
+    ("Theta",   ThetaEnvelope()),
+    ("SBS",     SBSEnvelope()),
+]:
+    env, times = computer.compute(audio, sr)
+    envelopes[name] = (env, times)
+
+fig = plot_multiple_envelopes(audio, sr, envelopes)
 ```
 
-### 3) Extract syllable embeddings
+![Envelope method comparison](docs/images/envelope_comparison.png)
+
+*Four classical envelope methods on the same utterance. SBS and Theta track syllabic rhythm most closely; Hilbert and RMS give a more continuous energy contour.*
+
+You can also call the functional dispatch directly:
+
+```python
+from findsylls import get_amplitude_envelope
+
+envelope, times = get_amplitude_envelope(audio, sr, method="theta")
+```
+
+**Available envelope methods:** `rms`, `hilbert`, `lowpass`, `sbs`, `gammatone`, `theta`, `cls_attention`, `greedy_cosine`, `mincut`
+
+---
+
+### Segmentation (`findsylls.segmentation`)
+
+All segmenters return `List[(start_s, nucleus_s, end_s)]`.
+
+#### Classical — peak detection
+
+```python
+from findsylls import segment_audio
+from findsylls.plotting import plot_multiple_envelope_segmentations
+from findsylls.audio.utils import load_audio
+from findsylls.envelope import HilbertEnvelope, ThetaEnvelope, SBSEnvelope
+from findsylls.segmentation import get_segmenter
+
+audio, sr = load_audio("audio.wav")
+
+results = {}
+for name, env_method in [("Hilbert", "hilbert"), ("Theta", "theta"), ("SBS", "sbs")]:
+    env_computer = {"hilbert": HilbertEnvelope, "theta": ThetaEnvelope, "sbs": SBSEnvelope}[env_method]()
+    env, times = env_computer.compute(audio, sr)
+    segmenter = get_segmenter("peakdetect", envelope_method=env_method)
+    segments = segmenter.segment(audio=audio, sr=sr)
+    results[name] = (env, times, segments)
+
+fig = plot_multiple_envelope_segmentations(audio, sr, results)
+```
+
+![Peak detection with three envelope methods](docs/images/peakdetect_segmentation.png)
+
+*The same audio segmented by `peakdetect` using three different envelope methods. Each panel shows how the chosen envelope shape influences where boundaries fall.*
+
+#### Neural — preset segmenters (`findsylls[end2end]`)
+
+Preset classes replicate the exact configurations from published papers:
+
+```python
+from findsylls.segmentation.presets import (
+    SylberSegmenter,          # Park et al. 2024 — greedy cosine on Sylber HuBERT
+    VGHubertMinCutSegmenter,  # Peng et al. 2023 — SSM MinCut on VG-HuBERT
+    VGHubertCLSSegmenter,     # Peng & Harwath 2022 — CLS attention on VG-HuBERT
+    SyllableLMSegmenter,      # Baade et al. 2024 — DP MinCut on HuBERT
+)
+from findsylls.audio.utils import load_audio
+
+audio, sr = load_audio("audio.wav")
+
+# Sylber (default paper config)
+sylber = SylberSegmenter()
+syllables = sylber.segment(audio, sr=sr)
+print(f"Sylber: {len(syllables)} syllables")
+
+# VG-HuBERT MinCut (syllable mode, layer 8)
+vgh_mincut = VGHubertMinCutSegmenter(mode="syllable")
+syllables = vgh_mincut.segment(audio, sr=sr)
+
+# VG-HuBERT CLS attention (word mode, layer 9)
+vgh_cls = VGHubertCLSSegmenter(mode="word")
+words = vgh_cls.segment(audio, sr=sr)
+```
+
+#### Generic dispatch
+
+```python
+from findsylls.segmentation import get_segmenter, list_segmenters
+
+print(list_segmenters())
+# ['peakdetect', 'cls_attention', 'mincut', 'greedy_cosine']
+
+segmenter = get_segmenter("mincut")
+syllables = segmenter.segment(audio, sr=sr)
+```
+
+---
+
+### Feature Extraction (`findsylls.features`)
+
+Feature extractors implement `FeatureExtractor.extract(audio, sr) → np.ndarray` (shape: `[T, D]`).
+
+```python
+from findsylls.audio.utils import load_audio
+from findsylls.features import MFCCExtractor, MelSpectrogramExtractor, HuBERTExtractor
+from findsylls.plotting import plot_multiple_feature_matrices
+import numpy as np
+
+audio, sr = load_audio("audio.wav")
+
+mfcc    = MFCCExtractor(n_mfcc=13)
+melspec = MelSpectrogramExtractor(n_mels=64)
+
+mfcc_feat = mfcc.extract(audio, sr)
+mel_feat  = melspec.extract(audio, sr)
+
+feature_results = {
+    "MFCC (13 coeffs)":        (mfcc_feat,  np.linspace(0, len(audio)/sr, mfcc_feat.shape[0])),
+    "Mel Spectrogram (64 bins)": (mel_feat, np.linspace(0, len(audio)/sr, mel_feat.shape[0])),
+}
+
+fig = plot_multiple_feature_matrices(audio, sr, feature_results)
+```
+
+![Feature matrix comparison](docs/images/feature_matrices.png)
+
+*MFCC and mel spectrogram feature matrices for the same utterance. Color encodes feature value; brighter = higher activation.*
+
+**Available extractors:** `mfcc`, `melspectrogram`, `hubert`, `sylber`, `vghubert`
+
+```python
+from findsylls.features import get_extractor
+
+extractor = get_extractor("hubert")          # vanilla HuBERT base (layer 9)
+features  = extractor.extract(audio, sr)     # shape: [T, 768]
+```
+
+---
+
+### Embedding (`findsylls.embedding`)
+
+Embedding wraps feature extraction + segmentation + pooling into a single call.
+
+#### Single file
 
 ```python
 from findsylls import embed_audio
 
 embeddings, metadata = embed_audio(
-    "example.wav",
-  segmentation="peakdetect",
-    features="mfcc",      # mfcc | melspec | sylber | vg_hubert
-    pooling="mean",       # mean | onc | max | median
+    "audio.wav",
+    segmentation="peakdetect",
+    features="mfcc",
+    pooling="mean",                          # mean | max | median | onc
+    segmentation_kwargs={"envelope_method": "hilbert"},
+    return_metadata=True,
 )
 
-print(embeddings.shape)
+print(embeddings.shape)                      # (n_syllables, 13)
 print(metadata["num_syllables"])
+print(metadata["boundaries"])                # [(start, end), ...]
 ```
 
-### 4) Batch embedding extraction
+#### Corpus
 
 ```python
 from findsylls import embed_corpus, save_embeddings
 
 results = embed_corpus(
-    audio_paths=["a.wav", "b.wav", "c.wav"],
-  segmentation="peakdetect",
+    audio_files=["a.wav", "b.wav", "c.wav"],
+    segmentation="peakdetect",
     features="mfcc",
     pooling="mean",
+    segmentation_kwargs={"envelope_method": "hilbert"},
     n_jobs=4,
 )
 
 save_embeddings(results, "embeddings.npz")
 ```
 
-## CLI
+#### Storage-backed corpus (large datasets)
 
-```bash
-# Segment audio
-findsylls segment input.wav --envelope sbs --method peakdetect --out sylls.json
-
-# Extract embeddings
-findsylls embed input.wav --features mfcc --pooling mean --out embeddings.npz
-
-# Evaluate against TextGrid annotations
-findsylls evaluate "data/**/*.wav" "data/**/*.TextGrid" \
-  --phone-tier 1 --syllable-tier 2 --word-tier 3 \
-  --envelope hilbert --out results.csv
-```
-
-## Methods Overview
-
-### Envelope Methods
-- `rms`
-- `hilbert`
-- `lowpass`
-- `sbs`
-- `gammatone`
-- `theta`
-- Feature-based envelopes (e.g., SSM / GreedyCosine / CLS-attention where available)
-
-### Segmentation Methods
-- `peakdetect`
-- `cls_attention`
-- `sylber`
-- `greedy_cosine`
-- `vg_hubert_mincut` (aliases: `vg_hubert`, `vg_hubert_ssm`, `featssm`)
-- `vg_hubert_cls`
-- `syllablelm`
-
-Backward-compatibility aliases are still accepted by the dispatcher, but the canonical names above are what the notebook and API docs should use.
-
-### Embedding Features
-- `mfcc` (13/26/39 dims with deltas)
-- `melspec` (mel-filterbank)
-- `sylber`
-- `vghubert` (also accepted as `vg-hubert` or `vg_hubert`)
-
-## Examples and Notebook
-
-- Interactive demo notebook: [findsylls_demo.ipynb](findsylls_demo.ipynb)
-- Example scripts: [examples/](examples/)
-- Streaming workflow tutorial: [notebooks/streaming_workflows.ipynb](notebooks/streaming_workflows.ipynb) *(coming soon)*
-
-## Corpus-Scale Workflows
-
-For large corpora, findsylls supports **storage-backed embedding extraction** and **streaming clustering** to avoid loading all embeddings into memory.
-
-### Storage-First Embedding Extraction
-
-Use `embed_corpus_to_storage()` to write embeddings directly to disk per-file, with a manifest CSV for indexing:
+For datasets that don't fit in RAM, write embeddings directly to disk:
 
 ```python
 from findsylls import embed_corpus_to_storage
 
-info = embed_corpus_to_storage(
-    audio_files=['a.wav', 'b.wav', 'c.wav', ...],
-    output_dir='./embeddings',
-    segmentation='peakdetect',
-    features='mfcc',
-    pooling='mean',
+bundle = embed_corpus_to_storage(
+    audio_files=["a.wav", "b.wav", ...],
+    output_dir="./embeddings",
+    segmentation="peakdetect",
+    features="mfcc",
+    pooling="mean",
+    segmentation_kwargs={"envelope_method": "hilbert"},
 )
 
-print(f"Embedded {info['num_success']}/{info['num_files']} files")
-# Output: ./embeddings/embedding_manifest.csv + ./embeddings/000000*.npz
+print(f"Embedded {bundle['num_success']}/{bundle['num_files']} files")
+# Writes: ./embeddings/embedding_manifest.csv + ./embeddings/000000_*.npz
 ```
 
-The manifest CSV contains:
-- `file_id`: File index
-- `audio_path`: Original audio file path
-- `embedding_path`: Path to `.npz` file with embeddings
-- `num_rows`: Number of syllables
-- `embedding_dim`: Embedding dimensionality
-- `success`: Whether embedding succeeded
-- `error`: Error message if failed
-
-### Streaming Clustering Discovery
-
-Cluster large embeddings without loading all into memory using `MiniBatchKMeans`:
+#### Preset-based embedding
 
 ```python
-from findsylls import DiscoveryPipeline
-from findsylls.embedding.storage import load_embedding_manifest
+from findsylls.embedding import EmbeddingPipeline
 
-# Load manifest from storage-backed embedding
-manifest_path = './embeddings/embedding_manifest.csv'
+pipeline = EmbeddingPipeline(preset="sylber", pooling="mean")
+embeddings, metadata = pipeline.embed("audio.wav", return_metadata=True)
+```
 
-pipeline = DiscoveryPipeline(
-    discovery_method='minibatch_kmeans',
-    n_clusters=50,
+**Available pooling methods:** `mean`, `max`, `median`, `onc`
+
+---
+
+### Discovery (`findsylls.discovery`)
+
+Discovery clusters syllable embeddings into unsupervised categories.
+
+```python
+from findsylls import embed_corpus, save_embeddings
+from findsylls.discovery import DiscoveryPipeline
+import numpy as np
+
+# Embed a corpus
+results = embed_corpus(audio_files=["a.wav", "b.wav", "c.wav"],
+                       segmentation="peakdetect", features="mfcc", pooling="mean",
+                       segmentation_kwargs={"envelope_method": "hilbert"})
+embeddings = np.vstack([r["embeddings"] for r in results if r.get("success")])
+
+# Cluster
+pipeline = DiscoveryPipeline(method="kmeans", model_kwargs={"n_clusters": 50})
+result   = pipeline.discover(embeddings)
+
+print(result.labels)                          # cluster assignment per syllable
+print(result.fit_metrics["silhouette"])
+print(result.fit_metrics["davies_bouldin"])
+```
+
+#### Streaming clustering (corpus too large for RAM)
+
+```python
+from findsylls import embed_corpus_to_storage
+from findsylls.discovery import DiscoveryPipeline
+
+bundle = embed_corpus_to_storage(audio_files=[...], output_dir="./embeddings",
+                                  segmentation="peakdetect", features="mfcc", pooling="mean",
+                                  segmentation_kwargs={"envelope_method": "hilbert"})
+
+pipeline = DiscoveryPipeline(method="minibatch_kmeans", model_kwargs={"n_clusters": 50})
+result   = pipeline.discover_from_storage(manifest_path=bundle["manifest_path"])
+```
+
+**Memory comparison:**
+
+| Approach | ~500K syllables × 768-D |
+|---|---|
+| `embed_corpus` + `vstack` + `KMeans` | ~10 GB RAM |
+| `embed_corpus_to_storage` + `discover_from_storage` | ~500 MB RAM |
+
+**Available methods:** `kmeans`, `minibatch_kmeans`, `agglomerative`
+
+---
+
+### Full Corpus Workflow (`findsylls.pipeline`)
+
+`FindSyllsOrchestrator` and `discover_corpus` run the entire pipeline — embed, discover, build manifests — in one call:
+
+```python
+from findsylls import discover_corpus
+
+result = discover_corpus(
+    audio_files="data/**/*.wav",
+    output_dir="./output",
+    segmentation_method="peakdetect",
+    features_method="mfcc",
+    pooling_method="mean",
+    discovery_method="kmeans",
+    segmentation_kwargs={"envelope_method": "hilbert"},
 )
 
-# Fit and predict in chunks (default: 10K embeddings per chunk)
-labels_by_file = pipeline.discover_from_storage(
-    manifest_path=manifest_path,
-    chunk_size=10000,
+print(result["corpus_manifest"])             # joined DataFrame
+print(result["discovery_manifest_path"])
+print(result["discovery_metrics"])
+```
+
+Or use the class directly:
+
+```python
+from findsylls.pipeline.orchestrator import FindSyllsOrchestrator
+
+orch = FindSyllsOrchestrator()
+
+# Single file: segment + embed
+embeddings, metadata = orch.segment_and_embed_audio(
+    "audio.wav",
+    segmentation_method="peakdetect",
+    features_method="mfcc",
+    pooling_method="mean",
+    segmentation_kwargs={"envelope_method": "hilbert"},
+)
+```
+
+---
+
+### Evaluation (`findsylls.evaluation`)
+
+#### Evaluate segmentation against TextGrid annotations
+
+```python
+from findsylls import segment_audio, evaluate_segmentation
+
+syllables, _, _ = segment_audio(
+    "audio.wav",
+    method="peakdetect",
+    segmentation_kwargs={"envelope_method": "hilbert"},
 )
 
-print(f"Discovered clusters across all files")
-for file_id, labels in labels_by_file.items():
-    print(f"  File {file_id}: {len(labels)} syllables")
-```
+peaks = [nucleus for _, nucleus, _ in syllables]
+spans = [(start, end) for start, _, end in syllables]
 
-**Memory Profile:**
-- **In-Memory Clustering** (`embed_corpus()` + `vstack()` + `KMeans`): ~10 GB for 500K syllables × 768D embeddings
-- **Streaming Clustering** (`embed_corpus_to_storage()` + `discover_from_storage()` with MiniBatchKMeans): ~500 MB
-
-This makes corpus-scale analysis practical on commodity hardware.
-
-## Evaluation & Metrics
-
-### Intrinsic Clustering Metrics (No Ground Truth Required)
-
-When you run discovery, findsylls automatically computes:
-
-- **Silhouette Score** (-1 to +1, higher is better): Measures how close samples are to their cluster vs other clusters
-- **Davies-Bouldin Index** (lower is better): Ratio of within-cluster to between-cluster distances
-- **Calinski-Harabasz Index** (higher is better): Ratio of between-cluster to within-cluster dispersion
-
-Example:
-```python
-from findsylls import DiscoveryPipeline
-
-pipeline = DiscoveryPipeline(method='kmeans', n_clusters=50)
-result = pipeline.discover(embeddings)
-
-print(f"Silhouette: {result.fit_metrics['silhouette']:.3f}")
-print(f"Davies-Bouldin: {result.fit_metrics['davies_bouldin']:.3f}")
-print(f"Calinski-Harabasz: {result.fit_metrics['calinski_harabasz']:.1f}")
-```
-
-### Evaluating Against TextGrid Annotations
-
-Compare segmentation and discovered clusters against manual annotations:
-
-```python
-from findsylls import evaluate_segmentation, compute_discovery_label_metrics
-
-# Evaluate segmentation at multiple granularities
-eval_result = evaluate_segmentation(
-    peaks=[0.15, 0.35, ...],      # syllable nuclei in seconds
-    spans=[(0.1, 0.2), (0.3, 0.4), ...],  # syllable boundaries
+metrics = evaluate_segmentation(
+    peaks=peaks,
+    spans=spans,
     textgrid_path="annotations.TextGrid",
-    tiers={'phone': 2, 'syllable': 1, 'word': 0}  # TextGrid tier indices
+    tiers={"phone": 2, "syllable": 1, "word": 0},
 )
 
-# Displays metrics like:
-# - nuclei_f1: align detected nuclei with vowel intervals
-# - syllable_boundaries_f1: align boundaries with syllable tiers
-# - word_spans_f1: align with word-level boundaries
+# Keys: nuclei, syllable_boundaries, syllable_spans, word_boundaries, word_spans
+print(metrics["syllable_boundaries"])
+# {'TP': 12, 'Ins': 2, 'Del': 1, 'Sub': 0, 'Precision': ..., 'Recall': ..., 'F1': ...}
 ```
 
-### Label-Aware Discovery Metrics
-
-Connect discovered clusters to ground-truth labels:
+#### Batch evaluation over a corpus
 
 ```python
-from findsylls.evaluation import attach_textgrid_labels_to_manifest, compute_discovery_label_metrics
+from findsylls import run_evaluation
 
-# Add TextGrid labels to discovery results
-labeled_manifest = attach_textgrid_labels_to_manifest(
-    manifest=discovery_result_manifest,
-    wav_paths=['audio.wav', ...],
-    textgrid_paths=['annotations.TextGrid', ...],
-    textgrid_tier_index=2,  # phone tier
+df = run_evaluation(
+    textgrid_paths="data/**/*.TextGrid",
+    wav_paths="data/**/*.wav",
+    tiers={"phone": 2, "syllable": 1, "word": 0},
+    method="peakdetect",
+    segmentation_kwargs={"envelope_method": "hilbert"},
 )
 
-# Compute metrics
-metrics = compute_discovery_label_metrics(labeled_manifest)
-
-print(f"Cluster Purity: {metrics['cluster_purity']:.3f}")
-print(f"Label Purity: {metrics['label_purity']:.3f}")
-print(f"Normalized MI: {metrics['label_norm_mutual_info']:.3f}")
-print(f"Macro F1: {metrics['macro_f1']:.3f}")
+print(df.groupby("method")[["syllable_boundaries_f1", "word_spans_f1"]].mean())
 ```
 
-**Metrics Glossary:**
-- **Cluster Purity**: What fraction of each cluster's members share the most common label (0-1)
-- **Label Purity**: What fraction of each label's instances fall in the most common cluster (0-1)
-- **Normalized MI**: Mutual information between cluster and label assignments, normalized by entropy (0-1)
-- **Macro F1**: Unweighted average F1 across clusters (treating each cluster's dominant label as class)
+#### Discovery label metrics
 
-### Common Workflows
+Connect cluster assignments to ground-truth TextGrid labels:
 
-1. **Corpus discovery with evaluation:**
-   - Run `embed_corpus_to_storage()` to extract syllable embeddings
-   - Run `discover_from_storage()` to cluster them
-   - Attach ground truth via `attach_textgrid_labels_to_manifest()`
-   - Compute metrics with `compute_discovery_label_metrics()`
+```python
+from findsylls.evaluation import (
+    attach_textgrid_labels_to_manifest,
+    compute_discovery_label_metrics,
+)
 
-2. **Comparing segmentation methods:**
-   - Run `evaluate_segmentation()` on each segmentation method
-   - Compare F1 scores across methods
+labeled = attach_textgrid_labels_to_manifest(
+    manifest=corpus_manifest,
+    file_manifest=file_manifest_df,
+    wav_paths=["a.wav", "b.wav"],
+    textgrid_paths=["a.TextGrid", "b.TextGrid"],
+    textgrid_tier_index=2,                       # phone tier
+)
 
-3. **Hyperparameter tuning:**
-   - Extract embeddings with different pooling methods
-   - Cluster with varying `n_clusters`
-   - Compare intrinsic metrics (Silhouette, Davies-Bouldin) to choose best hyperparameters
+metrics = compute_discovery_label_metrics(labeled)
+print(f"Cluster purity:  {metrics['cluster_purity']:.3f}")
+print(f"Label purity:    {metrics['label_purity']:.3f}")
+print(f"Normalized MI:   {metrics['label_norm_mutual_info']:.3f}")
+print(f"Macro F1:        {metrics['macro_f1']:.3f}")
+```
+
+#### Visualize evaluation results
+
+```python
+from findsylls import plot_segmentation_result
+
+# df = output of run_evaluation(), file_id = stem of the audio file
+fig, ax = plot_segmentation_result(
+    df,
+    file_id="SP20_117",
+    envelope_fn="sbs",
+    syll_tier=1,
+    phone_tier=2,
+    word_tier=0,
+)
+```
+
+---
+
+### Preset System (`findsylls.presets`)
+
+Named presets bundle segmentation + feature + pooling configurations from published papers:
+
+```python
+from findsylls import get_preset, resolve_preset, list_presets
+
+print(list_presets())
+# ['sylber', 'vg_hubert_mincut', 'vg_hubert_cls', 'syllablelm']
+
+cfg = get_preset("sylber")
+# {'segmentation': 'greedy_cosine', 'features': 'sylber', 'pooling': 'mean', ...}
+
+# Merge a preset with user overrides
+cfg = resolve_preset("sylber", pooling="onc")
+
+# Use directly with EmbeddingPipeline
+from findsylls.embedding import EmbeddingPipeline
+pipeline = EmbeddingPipeline(preset="sylber", pooling="mean")
+```
+
+---
+
+## CLI
+
+```bash
+# Segment audio into syllable boundaries
+findsylls segment audio.wav --envelope hilbert --method peakdetect --out syllables.json
+
+# Batch evaluation against TextGrid annotations
+findsylls evaluate "data/**/*.wav" "data/**/*.TextGrid" \
+  --phone-tier 2 --syllable-tier 1 --word-tier 0 \
+  --envelope hilbert --method peakdetect \
+  --out results.csv --aggregate summary.csv
+```
+
+---
+
+## Methods Reference
+
+### Envelope methods
+`rms` · `hilbert` · `lowpass` · `sbs` · `gammatone` · `theta` · `cls_attention` · `greedy_cosine` · `mincut`
+
+### Segmentation methods (dispatch strings)
+`peakdetect` · `cls_attention` · `mincut` · `greedy_cosine`
+
+### Preset segmenters (paper-replication classes)
+`SylberSegmenter` · `VGHubertMinCutSegmenter` · `VGHubertCLSSegmenter` · `SyllableLMSegmenter`
+
+### Feature extractors
+`mfcc` · `melspectrogram` · `hubert` · `sylber` · `vghubert`
+
+### Pooling methods
+`mean` · `max` · `median` · `onc`
+
+### Discovery methods
+`kmeans` · `minibatch_kmeans` · `agglomerative`
+
+---
+
+## Examples and Notebook
+
+- Interactive demo: [findsylls_demo.ipynb](findsylls_demo.ipynb)
+- Example scripts: [examples/](examples/)
+
+---
 
 ## Citation
-
-If you use findsylls in academic work, please cite:
-
-- https://arxiv.org/abs/2603.26292
-
-Plain text:
-
-```
-Vázquez Martínez, Héctor Javier. (2026). findsylls: A Language-Agnostic Toolkit for Syllable-Level Speech Tokenization and Embedding. arXiv:2603.26292. https://arxiv.org/abs/2603.26292
-```
-
-BibTeX:
 
 ```bibtex
 @misc{martinez2026findsyllslanguageagnostictoolkitsyllablelevel,
