@@ -14,7 +14,7 @@ def test_segmenters_are_algorithm_only():
 
 def test_preset_registry_is_separate():
     presets = set(list_presets())
-    assert presets == {"sylber", "vg_hubert_mincut", "vg_hubert_cls", "syllablelm"}
+    assert presets == {"sylber", "vg_hubert_mincut", "vg_hubert_cls"}
 
     sylber = get_preset("sylber")
     assert sylber["segmentation"] == "greedy_cosine"
@@ -56,12 +56,12 @@ def test_embedding_rejects_peakdetect_without_explicit_envelope_for_mfcc():
 def test_embedding_accepts_explicit_preset():
     emb, meta = embed_audio(
         "test_samples/SP20_117.wav",
-        preset="syllablelm",
+        preset="sylber",
     )
     assert emb.shape[0] > 0
-    assert meta["segmentation_method"] == "mincut"
-    assert meta["features"] == "hubert"
-    assert meta["preset"] == "syllablelm"
+    assert meta["segmentation_method"] == "greedy_cosine"
+    assert meta["features"] == "sylber"
+    assert meta["preset"] == "sylber"
 
 
 def test_resolve_preset_preserves_runtime_feature_extractor_identity():

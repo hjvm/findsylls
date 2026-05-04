@@ -76,20 +76,6 @@ _PRESET_RECIPES: Dict[str, Dict[str, Any]] = {
         "feature_kwargs": {"mode": "word"},
         "pooling_kwargs": {},
     },
-    "syllablelm": {
-        "segmentation": "mincut",
-        "features": "hubert",
-        "pooling": "mean",
-        "segmentation_kwargs": {
-            "feature_type": "hubert",
-            "sec_per_syllable": 0.22,
-            "use_optimized": True,
-            "min_hop": 3,
-            "max_hop": 50,
-        },
-        "feature_kwargs": {},
-        "pooling_kwargs": {},
-    },
 }
 
 

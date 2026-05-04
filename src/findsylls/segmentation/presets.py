@@ -13,7 +13,6 @@ Available presets:
 - SylberSegmenter: Sylber with greedy cosine (Park et al. 2024)
 - VGHubertMinCutSegmenter: VG-HuBERT with SSM + MinCut (Peng et al. 2023)
 - VGHubertCLSSegmenter: VG-HuBERT with CLS attention (Peng et al. 2023)
-- SyllableLMSegmenter: Optimized MinCut on HuBERT (Baade et al. 2024)
 """
 
 from typing import List, Tuple, Optional
@@ -290,92 +289,6 @@ class VGHubertCLSSegmenter(End2EndSegmenter):
             audio: Audio waveform (mono)
             sr: Sample rate
             **kwargs: Override parameters (quantile, min_distance)
-        
-        Returns:
-            List of (start, nucleus, end) tuples in seconds
-        """
-        return self._segmenter.segment(audio, sr, **kwargs)
-
-
-class SyllableLMSegmenter(End2EndSegmenter):
-    """
-    SyllableLM optimized segmentation (Baade et al. 2024).
-
-    Uses the SyllableLM DP MinCut (use_reference=True), which provides
-    a 5-6× speedup over the original O(n²) MinCut via dynamic programming.
-
-    Replicates the paper's configuration:
-    - Feature extractor: HuBERT base (layer 9, 768-dim)
-    - Algorithm: SyllableLM DP MinCut (use_reference=True)
-    - Hyperparameters: delta=0.0033, quantile=0.75, min_hop=3, max_hop=50
-
-    Warning: delta=0.0033 and quantile=0.75 were calibrated against Data2Vec2
-    features (8.33 Hz). With standard HuBERT features (50 Hz), the DP may
-    over-segment because the 0.75-quantile segment costs are well above delta.
-    The original SyllableLM paper used Data2Vec2, not vanilla HuBERT; using
-    HuBERT here matches the paper's intent but may require re-tuning delta/quantile
-    for production use.
-
-    Reference:
-        Baade, A., et al. (2024). "SyllableLM: Learning Coarse Semantic Units
-        for Speech Language Models." arXiv:2410.04029.
-
-    Args:
-        sec_per_syllable: Target syllable duration (default: 0.22)
-        min_hop: Minimum segment length in frames (default: 3)
-        max_hop: Maximum segment length in frames (default: 50)
-        device: Device for model ('cuda', 'cpu', or None for auto-detect)
-        sample_rate: Target sample rate (default: 16000)
-
-    Example:
-        >>> segmenter = SyllableLMSegmenter()
-        >>> segments = segmenter.segment(audio, sr=16000)
-    """
-
-    def __init__(
-        self,
-        sec_per_syllable: float = 0.20,
-        min_hop: int = 3,
-        max_hop: int = 50,
-        device: Optional[str] = None,
-        sample_rate: int = 16000
-    ):
-        super().__init__(sample_rate=sample_rate)
-
-        # Use vanilla HuBERT (not fine-tuned like Sylber)
-        from ..features import HuBERTExtractor
-        self.feature_extractor = HuBERTExtractor(device=device)
-
-        # Explicitly opt in to the SyllableLM DP path (use_reference=True).
-        # The MinCutSegmenter default is now use_reference=False (SSM path),
-        # so this must be explicit or SyllableLMSegmenter silently changes behavior.
-        self._segmenter = MinCutSegmenter(
-            feature_extractor=self.feature_extractor,
-            sec_per_syllable=sec_per_syllable,
-            use_reference=True,
-            use_optimized=True,
-            min_hop=min_hop,
-            max_hop=max_hop,
-        )
-        
-        self.sec_per_syllable = sec_per_syllable
-        self.min_hop = min_hop
-        self.max_hop = max_hop
-        self.device = device
-    
-    def segment(
-        self,
-        audio: np.ndarray,
-        sr: int = 16000,
-        **kwargs
-    ) -> List[Tuple[float, float, float]]:
-        """
-        Segment audio into syllables using SyllableLM optimized method.
-        
-        Args:
-            audio: Audio waveform (mono)
-            sr: Sample rate
-            **kwargs: Override default parameters
         
         Returns:
             List of (start, nucleus, end) tuples in seconds

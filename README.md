@@ -472,7 +472,7 @@ Named presets bundle segmentation + feature + pooling configurations from publis
 from findsylls import get_preset, resolve_preset, list_presets
 
 print(list_presets())
-# ['sylber', 'vg_hubert_mincut', 'vg_hubert_cls', 'syllablelm']
+# ['sylber', 'vg_hubert_cls', 'vg_hubert_mincut']
 
 cfg = get_preset("sylber")
 # {'segmentation': 'greedy_cosine', 'features': 'sylber', 'pooling': 'mean', ...}
