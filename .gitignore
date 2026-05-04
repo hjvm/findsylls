@@ -33,8 +33,10 @@ segmentation_results.csv
 */segmentation_results.csv
 test_output_cli/
 
-# Development docs
+# Development docs and internal planning files
 docs/dev/
+CLAUDE.md
+REBUILD_2X_BLUEPRINT.md
 
 # Old code/versions of this repo
 legacy/
