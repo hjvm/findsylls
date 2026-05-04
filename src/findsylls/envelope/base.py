@@ -8,7 +8,9 @@ with segmentation algorithms.
 
 import numpy as np
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Tuple, Optional
+
+from ..features.base import FeatureExtractor
 
 
 class EnvelopeComputer(ABC):
@@ -56,3 +58,31 @@ class EnvelopeComputer(ABC):
             - times: 1D array of time points in seconds
         """
         pass
+
+
+class PseudoEnvelope(EnvelopeComputer, ABC):
+    """Shared base class for feature-derived pseudo-envelope computers.
+
+    Pseudo-envelopes are not independent segmentation algorithms. They expose a
+    1-D trace derived from canonical segmentation internals for diagnostics,
+    plotting, and envelope-based experiments.
+    """
+
+    def __init__(self, feature_extractor: FeatureExtractor, normalize: bool = True):
+        self.feature_extractor = feature_extractor
+        self.normalize = normalize
+
+    def _normalize_envelope(self, envelope: np.ndarray) -> np.ndarray:
+        envelope = np.asarray(envelope, dtype=np.float32)
+        if not self.normalize:
+            return envelope
+        env_min = float(envelope.min()) if envelope.size > 0 else 0.0
+        env_max = float(envelope.max()) if envelope.size > 0 else 0.0
+        if env_max > env_min:
+            return (envelope - env_min) / (env_max - env_min)
+        return np.zeros_like(envelope, dtype=np.float32)
+
+    def _frame_times(self, num_frames: int, frame_rate: Optional[float] = None) -> np.ndarray:
+        if frame_rate is None:
+            frame_rate = float(self.feature_extractor.frame_rate)
+        return (np.arange(num_frames, dtype=np.float32) / float(frame_rate)).astype(np.float32)

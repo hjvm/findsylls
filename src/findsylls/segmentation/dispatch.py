@@ -18,7 +18,20 @@ from .peakdetect_segmenter import segment_peakdetect
 # Registry for segmentation methods
 _SEGMENTERS: Dict[str, Type[BaseSegmenter]] = {}
 _ENVELOPE_METHODS_REGISTERED = False
-_END2END_METHODS_REGISTERED = False
+_FEATURE_METHODS_REGISTERED = False
+
+# Canonical methods are the public names we want to present to callers.
+# Backward-compatible aliases are normalized before registry lookup.
+_CANONICAL_SEGMENTERS: List[str] = [
+    'peakdetect',
+    'cls_attention',
+    'mincut',
+    'greedy_cosine',
+]
+
+_SEGMENTER_ALIASES: Dict[str, str] = {
+    'greedycosine': 'greedy_cosine',
+}
 
 # Global cache for segmenter instances (keyed by method + kwargs hash)
 # This allows model reuse across multiple files, critical for neural segmenters like Sylber
@@ -36,6 +49,24 @@ def register_segmenter(name: str, segmenter_class: Type[BaseSegmenter]) -> None:
     if not issubclass(segmenter_class, BaseSegmenter):
         raise TypeError(f"{segmenter_class} must inherit from BaseSegmenter")
     _SEGMENTERS[name] = segmenter_class
+
+
+def normalize_segmenter_name(method: str) -> str:
+    """Resolve aliases to canonical segmentation method names."""
+    key = method.lower().replace('-', '_')
+    return _SEGMENTER_ALIASES.get(key, key)
+
+
+def list_segmenters() -> List[str]:
+    """List canonical registered segmentation methods."""
+    _register_envelope_methods()
+    _register_feature_methods()
+    return [name for name in _CANONICAL_SEGMENTERS if name in _SEGMENTERS]
+
+
+def list_segmenter_aliases() -> Dict[str, str]:
+    """List supported alias -> canonical method mappings."""
+    return dict(_SEGMENTER_ALIASES)
 
 
 def get_segmenter(method: str, cache: bool = True, **kwargs) -> BaseSegmenter:
@@ -67,7 +98,9 @@ def get_segmenter(method: str, cache: bool = True, **kwargs) -> BaseSegmenter:
     """
     # Ensure methods are registered
     _register_envelope_methods()
-    _register_end2end_methods()
+    _register_feature_methods()
+
+    method = normalize_segmenter_name(method)
     
     if method not in _SEGMENTERS:
         available = ', '.join(sorted(_SEGMENTERS.keys()))
@@ -136,39 +169,36 @@ def _register_envelope_methods():
                 super().__init__(envelope_computer, **kwargs)
         
         register_segmenter('peakdetect', DefaultPeakdetectSegmenter)
-        register_segmenter('billauer', DefaultPeakdetectSegmenter)  # Explicit Billauer naming
+
+        from .cls_attention import CLSAttentionSegmenter
+        register_segmenter('cls_attention', CLSAttentionSegmenter)
         _ENVELOPE_METHODS_REGISTERED = True
 
 
-def _register_end2end_methods() -> None:
-    """Register end-to-end neural segmentation methods (lazy loading)."""
-    global _END2END_METHODS_REGISTERED
-    if _END2END_METHODS_REGISTERED:
+def _register_feature_methods() -> None:
+    """Register feature-based segmentation algorithms with default extractors."""
+    global _FEATURE_METHODS_REGISTERED
+    if _FEATURE_METHODS_REGISTERED:
         return
-    
-    # Lazy import - only load if packages are installed
-    try:
-        from .presets import SylberSegmenter
-        register_segmenter('sylber', SylberSegmenter)
-    except ImportError:
-        pass  # sylber package not installed
-    
-    try:
-        from .presets import VGHubertMinCutSegmenter, VGHubertCLSSegmenter
-        register_segmenter('vg_hubert', VGHubertMinCutSegmenter)  # Default to MinCut
-        register_segmenter('vg_hubert_mincut', VGHubertMinCutSegmenter)
-        register_segmenter('vg_hubert_ssm', VGHubertMinCutSegmenter)  # Alias
-        register_segmenter('vg_hubert_cls', VGHubertCLSSegmenter)
-    except ImportError:
-        pass  # VG-HuBERT dependencies not installed
-    
-    try:
-        from .presets import SyllableLMSegmenter
-        register_segmenter('syllablelm', SyllableLMSegmenter)
-    except ImportError:
-        pass  # HuBERT dependencies not installed
-    
-    _END2END_METHODS_REGISTERED = True
+
+    from .mincut import MinCutSegmenter
+    from .greedy_cosine import GreedyCosineSegmenter
+    from ..features import get_extractor
+
+    class DefaultMinCutSegmenter(MinCutSegmenter):
+        def __init__(self, feature_type='hubert', feature_kwargs=None, feature_extractor=None, **kwargs):
+            extractor = feature_extractor or get_extractor(feature_type, **(feature_kwargs or {}))
+            super().__init__(feature_extractor=extractor, **kwargs)
+
+    class DefaultGreedyCosineSegmenter(GreedyCosineSegmenter):
+        def __init__(self, feature_type='hubert', feature_kwargs=None, feature_extractor=None, **kwargs):
+            extractor = feature_extractor or get_extractor(feature_type, **(feature_kwargs or {}))
+            super().__init__(feature_extractor=extractor, **kwargs)
+
+    register_segmenter('mincut', DefaultMinCutSegmenter)
+    register_segmenter('greedy_cosine', DefaultGreedyCosineSegmenter)
+
+    _FEATURE_METHODS_REGISTERED = True
 
 
 # Backward-compatible functional API
@@ -198,9 +228,11 @@ def segment_envelope(
     """
     if method is None:
         method = "peakdetect"
+
+    method = normalize_segmenter_name(method)
     
-    # For backward compatibility, call original function directly if peakdetect or billauer
-    if method in ("peakdetect", "billauer"):
+    # For backward compatibility, call original function directly if peakdetect
+    if method == "peakdetect":
         return segment_peakdetect(envelope=envelope, times=times, **kwargs)
     
     # Otherwise use new system

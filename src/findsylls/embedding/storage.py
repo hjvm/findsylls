@@ -8,8 +8,9 @@ Supports multiple formats:
 
 import numpy as np
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Sequence, Tuple, Union
 import json
+import csv
 import warnings
 
 try:
@@ -367,3 +368,176 @@ def load_embeddings(
         return load_embeddings_hdf5(input_path, **kwargs)
     else:
         raise ValueError(f"Unknown format: {format}. Use 'npz' or 'hdf5'.")
+
+
+def write_embedding_manifest(
+    rows: List[Dict[str, Any]],
+    manifest_path: Union[str, Path],
+) -> None:
+    """Write embedding manifest rows to CSV."""
+    manifest_path = Path(manifest_path)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not rows:
+        fieldnames = [
+            'file_id', 'audio_path', 'embedding_path', 'num_rows', 'embedding_dim',
+            'success', 'error', 'segmentation', 'features', 'pooling'
+        ]
+    else:
+        fieldnames = list(rows[0].keys())
+
+    with manifest_path.open('w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def load_embedding_manifest(manifest_path: Union[str, Path]) -> List[Dict[str, Any]]:
+    """Load embedding manifest CSV rows."""
+    manifest_path = Path(manifest_path)
+    rows: List[Dict[str, Any]] = []
+    with manifest_path.open('r', newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            row['file_id'] = int(row.get('file_id', 0))
+            row['num_rows'] = int(row.get('num_rows', 0))
+            row['embedding_dim'] = int(row.get('embedding_dim', 0))
+            row['success'] = str(row.get('success', 'False')).lower() == 'true'
+            rows.append(row)
+    return rows
+
+
+def iter_embeddings_from_manifest(
+    manifest_path: Union[str, Path],
+    chunk_size: int = 10000,
+):
+    """
+    Yield embedding chunks from per-file `.npz` files listed in a manifest.
+
+    Args:
+        manifest_path: CSV produced by embed_corpus_to_storage
+        chunk_size: Max number of rows per yielded chunk
+
+    Yields:
+        np.ndarray chunks of shape (N, D)
+    """
+    rows = load_embedding_manifest(manifest_path)
+    pending = []
+    pending_rows = 0
+
+    for row in rows:
+        if not row['success']:
+            continue
+        embedding_path = row.get('embedding_path')
+        if not embedding_path:
+            continue
+        ep = Path(embedding_path)
+        if not ep.exists():
+            continue
+
+        with np.load(ep, allow_pickle=True) as data:
+            emb = data['embeddings']
+
+        if emb.size == 0:
+            continue
+
+        pending.append(emb)
+        pending_rows += emb.shape[0]
+
+        if pending_rows >= chunk_size:
+            yield np.vstack(pending)
+            pending = []
+            pending_rows = 0
+
+    if pending:
+        yield np.vstack(pending)
+
+
+def load_embedding_rows(
+    manifest_path: Union[str, Path],
+    requests: Sequence[Tuple[int, int]],
+) -> List[Dict[str, Any]]:
+    """Load specific embedding rows by (file_id, segment_id) keys.
+
+    This helper enforces key-based retrieval using persisted identity arrays
+    stored in each per-file shard:
+      - file_id (scalar)
+      - segment_ids (vector, length N)
+
+    Args:
+        manifest_path: Path to embedding manifest CSV produced by embed_corpus_to_storage.
+        requests: Sequence of (file_id, segment_id) pairs to retrieve.
+
+    Returns:
+        A list of dicts with keys: file_id, segment_id, embedding_path, embedding.
+
+    Raises:
+        KeyError: Requested file_id or segment_id is missing.
+        ValueError: Shard lacks required identity arrays.
+    """
+    if not requests:
+        return []
+
+    rows = load_embedding_manifest(manifest_path)
+    file_row_by_id = {int(row["file_id"]): row for row in rows if row.get("success")}
+
+    grouped_requests: Dict[int, List[int]] = {}
+    for file_id, segment_id in requests:
+        grouped_requests.setdefault(int(file_id), []).append(int(segment_id))
+
+    results: List[Dict[str, Any]] = []
+    missing_requests: List[Tuple[int, int]] = []
+
+    for file_id, segment_ids_needed in grouped_requests.items():
+        file_row = file_row_by_id.get(file_id)
+        if file_row is None:
+            missing_requests.extend((file_id, sid) for sid in segment_ids_needed)
+            continue
+
+        embedding_path = Path(str(file_row["embedding_path"]))
+        if not embedding_path.exists():
+            raise FileNotFoundError(f"Embedding shard does not exist: {embedding_path}")
+
+        with np.load(embedding_path, allow_pickle=True) as data:
+            embeddings = data["embeddings"]
+            has_segment_ids = "segment_ids" in data
+            has_file_id = "file_id" in data
+
+            if has_segment_ids and has_file_id:
+                shard_file_id = int(np.array(data["file_id"]).item())
+                if shard_file_id != file_id:
+                    raise ValueError(
+                        f"Shard file_id mismatch for {embedding_path}: "
+                        f"manifest={file_id}, shard={shard_file_id}"
+                    )
+                segment_ids = np.asarray(data["segment_ids"], dtype=np.int64)
+                id_to_row = {int(seg_id): idx for idx, seg_id in enumerate(segment_ids.tolist())}
+            else:
+                raise ValueError(
+                    "Embedding shard is missing persisted identity arrays "
+                    f"(file_id/segment_ids): {embedding_path}. "
+                    "Re-embed with embed_corpus_to_storage."
+                )
+
+            for segment_id in segment_ids_needed:
+                row_idx = id_to_row.get(segment_id)
+                if row_idx is None:
+                    missing_requests.append((file_id, segment_id))
+                    continue
+                results.append(
+                    {
+                        "file_id": file_id,
+                        "segment_id": segment_id,
+                        "embedding_path": str(embedding_path),
+                        "embedding": np.asarray(embeddings[row_idx]),
+                    }
+                )
+
+    if missing_requests:
+        missing_str = ", ".join([f"({fid}, {sid})" for fid, sid in missing_requests])
+        raise KeyError(f"Missing requested embedding rows for keys: {missing_str}")
+
+    request_order = {(int(fid), int(sid)): i for i, (fid, sid) in enumerate(requests)}
+    results.sort(key=lambda row: request_order[(row["file_id"], row["segment_id"])])
+    return results

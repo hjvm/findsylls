@@ -60,6 +60,7 @@ _PRESET_RECIPES: Dict[str, Dict[str, Any]] = {
         "segmentation_kwargs": {
             "feature_type": "vghubert",
             "sec_per_syllable": 0.22,
+            "use_reference": False,
             "use_optimized": True,
             "min_hop": 3,
             "max_hop": 50,

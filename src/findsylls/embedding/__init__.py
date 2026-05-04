@@ -25,13 +25,33 @@ Usage:
     ... )
 """
 
-from .pipeline import embed_audio, embed_corpus
+from .pipeline import EmbeddingPipeline, embed_audio, embed_corpus, embed_corpus_to_storage
 from .extractors import extract_features
-from .pooling import pool_syllables
+from ..presets import list_presets, get_preset, resolve_preset
+from .poolers import (
+    BasePooler,
+    MeanPooler,
+    MaxPooler,
+    MedianPooler,
+    ONCPooler,
+    get_pooler,
+    list_poolers,
+)
 
 __all__ = [
+    'EmbeddingPipeline',
     'embed_audio',
     'embed_corpus',
+    'embed_corpus_to_storage',
     'extract_features',
-    'pool_syllables',
+    'list_presets',
+    'get_preset',
+    'resolve_preset',
+    'BasePooler',
+    'MeanPooler',
+    'MaxPooler',
+    'MedianPooler',
+    'ONCPooler',
+    'get_pooler',
+    'list_poolers',
 ]

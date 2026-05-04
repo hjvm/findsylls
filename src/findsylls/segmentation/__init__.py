@@ -1,4 +1,10 @@
-from .dispatch import segment_envelope, get_segmenter, register_segmenter
+from .dispatch import (
+    get_segmenter,
+    register_segmenter,
+    normalize_segmenter_name,
+    list_segmenters,
+    list_segmenter_aliases,
+)
 from .base import (
     BaseSegmenter,
     EnvelopeBasedSegmenter,
@@ -6,13 +12,21 @@ from .base import (
     SegmenterProtocol,
 )
 from .peakdetect_segmenter import (
-    segment_peakdetect, 
-    segment_billauer, 
+    segment_peakdetect,
     PeakdetectSegmenter,
 )
-from .mincut import MinCutSegmenter, min_cut, min_cut_optimized
+from .mincut import (
+    MinCutSegmenter,
+    min_cut,
+    min_cut_optimized,
+    efficient_extraction_dp_helper,
+    get_quantile_borders_helper,
+    efficient_extraction,
+    extract_mincut_boundaries,
+    compute_mincut_presegmentation_trace,
+)
 from .greedy_cosine import GreedyCosineSegmenter, greedy_cosine_segment
-from .cls_attention import segment_by_cls_attention, compute_cls_attention_envelope
+from .cls_attention import CLSAttentionSegmenter
 from ..features import (
     FeatureExtractor,
     HuBERTExtractor,
@@ -22,24 +36,13 @@ from ..features import (
     get_extractor,
 )
 
-# Preset configurations (lazy import to avoid dependency errors)
-try:
-    from .presets import (
-        SylberSegmenter,
-        VGHubertMinCutSegmenter,
-        VGHubertCLSSegmenter,
-        SyllableLMSegmenter,
-    )
-    _PRESET_SEGMENTERS_AVAILABLE = True
-except ImportError:
-    _PRESET_SEGMENTERS_AVAILABLE = False
-
 __all__ = [
-    "segment_envelope",
     "segment_peakdetect",
-    "segment_billauer",  # Backward compatibility
     "get_segmenter",
     "register_segmenter",
+    "normalize_segmenter_name",
+    "list_segmenters",
+    "list_segmenter_aliases",
     "BaseSegmenter",
     "EnvelopeBasedSegmenter",
     "End2EndSegmenter",
@@ -51,9 +54,13 @@ __all__ = [
     "GreedyCosineSegmenter",
     "min_cut",
     "min_cut_optimized",
+    "efficient_extraction_dp_helper",
+    "get_quantile_borders_helper",
+    "efficient_extraction",
+    "extract_mincut_boundaries",
+    "compute_mincut_presegmentation_trace",
     "greedy_cosine_segment",
-    "segment_by_cls_attention",
-    "compute_cls_attention_envelope",
+    "CLSAttentionSegmenter",
     # Phase 5: Feature extractors
     "FeatureExtractor",
     "HuBERTExtractor",
@@ -62,12 +69,3 @@ __all__ = [
     "CustomCallableExtractor",
     "get_extractor",
 ]
-
-# Add preset segmenters if available
-if _PRESET_SEGMENTERS_AVAILABLE:
-    __all__.extend([
-        "SylberSegmenter",
-        "VGHubertMinCutSegmenter",
-        "VGHubertCLSSegmenter",
-        "SyllableLMSegmenter",
-    ])

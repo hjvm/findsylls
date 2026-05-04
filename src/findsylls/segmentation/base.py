@@ -21,8 +21,36 @@ learn the entire segmentation pipeline from data.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Optional, Protocol
+from typing import Any, List, Tuple, Optional, Protocol
 import numpy as np
+
+
+def extract_frame_features(
+    feature_extractor: Any,
+    audio: np.ndarray,
+    sr: int,
+) -> np.ndarray:
+    """
+    Extract frame-level features from a segmentation feature extractor.
+
+    Contract:
+    1. Preferred: extractor object exposes `extract(audio, sr)`.
+    2. Alternative: extractor is a callable `(audio, sr) -> features`.
+
+    This capability-based dispatch avoids fragile class-identity checks that can
+    break under module reloads in notebook workflows.
+    """
+    extract_fn = getattr(feature_extractor, "extract", None)
+    if callable(extract_fn):
+        return extract_fn(audio, sr)
+
+    if callable(feature_extractor):
+        return feature_extractor(audio, sr)
+
+    raise TypeError(
+        "feature_extractor must provide an extract(audio, sr) method "
+        "or be callable as (audio, sr)."
+    )
 
 
 class SegmenterProtocol(Protocol):

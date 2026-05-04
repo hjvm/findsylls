@@ -69,7 +69,7 @@ def plot_segmentation_result(
         >>> from findsylls.features import SylberFeatureExtractor
         >>> from findsylls.envelope import GreedyCosineEnvelope
         >>> extractor = SylberFeatureExtractor(device='cuda')
-        >>> envelope = GreedyCosineEnvelope(extractor, window_size=5)
+        >>> envelope = GreedyCosineEnvelope(extractor, aggregation_method='merge_similarity')
         >>> plot_segmentation_result(df, "file1", envelope_computer=envelope)
     """
     df = df[df["file_id"] == file_id]

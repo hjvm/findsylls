@@ -31,7 +31,7 @@ of Speech from Raw Audio." arXiv preprint arXiv:2410.14336.
 import numpy as np
 from typing import Optional, Tuple, List, Union, Callable
 
-from .base import End2EndSegmenter
+from .base import End2EndSegmenter, extract_frame_features
 from ..features import FeatureExtractor
 
 
@@ -77,6 +77,142 @@ def cosine_similarity(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     y_norm = ((y**2).sum(-1) + epsilon) ** 0.5
     
     return dot_product / (x_norm * y_norm)
+
+
+def compute_greedy_cosine_norms(features: np.ndarray) -> np.ndarray:
+    """Compute frame-wise L2 norms with Sylber-compatible epsilon stabilization."""
+    return np.sqrt((features ** 2).sum(-1) + 1e-8)
+
+
+def compute_greedy_cosine_mask(
+    features: np.ndarray,
+    norm_threshold: float = 2.6,
+    norms: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Compute non-silence mask used by canonical GreedyCosine segmentation."""
+    if norms is None:
+        norms = compute_greedy_cosine_norms(features)
+    return norms >= norm_threshold
+
+
+def compute_greedy_cosine_merge_similarity_trace(
+    features: np.ndarray,
+    norm_threshold: float = 2.6,
+    merge_threshold: float = 0.8,
+    norms: Optional[np.ndarray] = None,
+    start_value: float = 1.0,
+    silence_value: float = 0.0,
+) -> np.ndarray:
+    """
+    Compute the canonical phase-1 merge-similarity trace.
+
+    This replays the phase-1 greedy loop from `greedy_cosine_segment` and records,
+    for each non-silence frame, the cosine similarity between that frame and the
+    current running segment prototype BEFORE thresholding by `merge_threshold`.
+
+    Args:
+        features: Feature matrix [T, D].
+        norm_threshold: Silence threshold used by canonical algorithm.
+        merge_threshold: Merge threshold used by canonical algorithm.
+        norms: Optional precomputed norms [T].
+        start_value: Value used at the first frame of each active region.
+        silence_value: Value used for silence frames.
+
+    Returns:
+        Trace [T] where values near/above `merge_threshold` indicate merge-likely
+        transitions and low values indicate split-likely transitions.
+    """
+    if features.ndim != 2:
+        raise ValueError(f"features must be 2D array (T, D), got shape {features.shape}")
+
+    t = features.shape[0]
+    mask = compute_greedy_cosine_mask(features, norm_threshold=norm_threshold, norms=norms)
+    trace = np.full(t, silence_value, dtype=np.float32)
+
+    curr_avg = 0
+    seg_cnt = 0
+    for i in range(t):
+        if not mask[i]:
+            curr_avg = 0
+            seg_cnt = 0
+            trace[i] = silence_value
+            continue
+
+        if seg_cnt == 0:
+            curr_avg = features[i]
+            seg_cnt += 1
+            trace[i] = start_value
+            continue
+
+        sim = float(cosine_similarity(curr_avg, features[i]))
+        trace[i] = sim
+
+        # Replay canonical branch behavior exactly so the next-step prototype
+        # matches what segmentation would use.
+        if sim >= merge_threshold:
+            curr_avg = (curr_avg * seg_cnt + features[i]) / (seg_cnt + 1)
+            seg_cnt += 1
+        else:
+            curr_avg = features[i]
+            seg_cnt += 1
+
+    return trace.astype(np.float32)
+
+
+def greedy_cosine_segments_to_envelope(
+    segments: np.ndarray,
+    num_frames: int,
+    aggregation_method: str = 'segment_mask',
+    normalize: bool = True,
+    boundary_smooth_frames: int = 1,
+) -> np.ndarray:
+    """
+    Convert canonical GreedyCosine segments into a 1-D pseudo-envelope.
+
+    Args:
+        segments: Frame segments [N, 2] with end-exclusive boundaries.
+        num_frames: Sequence length.
+        aggregation_method: One of {'segment_mask', 'boundary_impulse', 'boundary_density'}.
+        normalize: Whether to normalize envelope to [0, 1].
+        boundary_smooth_frames: Smoothing half-width for 'boundary_density'.
+
+    Returns:
+        Envelope array of shape [num_frames].
+    """
+    envelope = np.zeros(num_frames, dtype=np.float32)
+
+    if aggregation_method == 'segment_mask':
+        for start, end in segments:
+            s = max(0, int(start))
+            e = min(num_frames, int(end))
+            if e > s:
+                envelope[s:e] = 1.0
+
+    elif aggregation_method in {'boundary_impulse', 'boundary_density'}:
+        for start, _ in segments:
+            s = int(start)
+            if 0 <= s < num_frames:
+                envelope[s] = 1.0
+
+        if aggregation_method == 'boundary_density' and boundary_smooth_frames > 0:
+            radius = int(boundary_smooth_frames)
+            x = np.arange(-radius, radius + 1, dtype=np.float32)
+            sigma = max(1.0, float(boundary_smooth_frames))
+            kernel = np.exp(-0.5 * (x / sigma) ** 2).astype(np.float32)
+            kernel /= kernel.sum() + 1e-8
+            envelope = np.convolve(envelope, kernel, mode='same').astype(np.float32)
+    else:
+        raise ValueError(
+            "aggregation_method must be one of {'segment_mask', 'boundary_impulse', 'boundary_density'}"
+        )
+
+    if normalize:
+        env_min = envelope.min()
+        env_max = envelope.max()
+        if env_max > env_min:
+            envelope = (envelope - env_min) / (env_max - env_min)
+
+    return envelope.astype(np.float32)
 
 
 def greedy_cosine_segment(
@@ -164,13 +300,13 @@ def greedy_cosine_segment(
     
     # Compute norms if not provided
     if norms is None:
-        norms = np.sqrt((features ** 2).sum(-1) + 1e-8)
+        norms = compute_greedy_cosine_norms(features)
     
     # Phase 1: Greedy merging with silence detection
     # -----------------------------------------------
     
     # Mask: True for high-energy frames (potential syllable nuclei/segments)
-    mask = norms >= norm_threshold
+    mask = compute_greedy_cosine_mask(features, norm_threshold=norm_threshold, norms=norms)
     
     # Initialize state
     curr_avg = 0  # Running average of current segment
@@ -390,9 +526,8 @@ class GreedyCosineSegmenter(End2EndSegmenter):
     
     Args:
         feature_extractor: Feature extractor (FeatureExtractor instance or callable)
-        norm_threshold: Minimum feature norm to consider (default: 0.3)
-        merge_threshold: Cosine similarity threshold for merging (default: 0.85)
-        boundary_window: Window size for boundary refinement (default: 3)
+        norm_threshold: Minimum feature norm to consider (default: 2.6)
+        merge_threshold: Cosine similarity threshold for merging (default: 0.8)
     
     Example:
         >>> from findsylls.segmentation.extractors import MFCCExtractor
@@ -404,15 +539,13 @@ class GreedyCosineSegmenter(End2EndSegmenter):
     def __init__(
         self,
         feature_extractor: Union[FeatureExtractor, Callable],
-        norm_threshold: float = 0.3,
-        merge_threshold: float = 0.85,
-        boundary_window: int = 3,
+        norm_threshold: float = 2.6,
+        merge_threshold: float = 0.8,
     ):
         super().__init__()
         self.feature_extractor = feature_extractor
         self.norm_threshold = norm_threshold
         self.merge_threshold = merge_threshold
-        self.boundary_window = boundary_window
         
         # Determine frame rate
         if isinstance(feature_extractor, FeatureExtractor):
@@ -424,15 +557,10 @@ class GreedyCosineSegmenter(End2EndSegmenter):
     
     def segment(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float, float]]:
         """Segment audio using Greedy Cosine on extracted features."""
-        # Extract features
-        if isinstance(self.feature_extractor, FeatureExtractor):
-            features = self.feature_extractor.extract(audio, sr)
-        else:
-            features = self.feature_extractor(audio, sr)
+        # Extract features through capability-based contract.
+        features = extract_frame_features(self.feature_extractor, audio, sr)
         
-        # Apply greedy cosine algorithm
-        # Note: boundary_window is stored but not used by greedy_cosine_segment
-        # (the algorithm handles boundary refinement internally)
+        # Apply canonical greedy cosine algorithm on extractor states/features.
         frame_segments = greedy_cosine_segment(
             features,
             norm_threshold=self.norm_threshold,
@@ -443,34 +571,31 @@ class GreedyCosineSegmenter(End2EndSegmenter):
         # Convert frame segments to time segments with feature-based nuclei
         time_segments = []
         for start_frame, end_frame in frame_segments:
-            # Find nucleus: frame with highest average cosine similarity to other frames in segment
+            # Nucleus: frame with highest cosine similarity to the segment centroid.
+            # The centroid (mean of final [start, end]) is the quantity the greedy
+            # loop converges to; argmax cos(f_i, centroid) is the most representative
+            # frame by the algorithm's own measure.
             if end_frame - start_frame > 1:
                 segment_features = features[start_frame:end_frame]
-                # Normalize segment features
-                segment_norm = segment_features / (np.linalg.norm(segment_features, axis=1, keepdims=True) + 1e-8)
-                # Compute cosine similarity matrix for segment
-                segment_ssm = segment_norm @ segment_norm.T
-                # Average similarity of each frame to all other frames in segment
-                avg_similarities = segment_ssm.mean(axis=1)
-                nucleus_frame = start_frame + np.argmax(avg_similarities)
+                centroid = segment_features.mean(axis=0)
+                centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
+                feat_norm = segment_features / (np.linalg.norm(segment_features, axis=1, keepdims=True) + 1e-8)
+                nucleus_frame = start_frame + int(np.argmax(feat_norm @ centroid_norm))
             else:
                 nucleus_frame = start_frame
-            
+
             start_sec = start_frame / self.frame_rate
             end_sec = end_frame / self.frame_rate
             nucleus_sec = nucleus_frame / self.frame_rate
             time_segments.append((start_sec, nucleus_sec, end_sec))
-        
+
         return time_segments
     
     def get_embeddings(
         self, audio: np.ndarray, sr: int
     ) -> Tuple[List[Tuple[float, float, float]], np.ndarray]:
         """Get segments and their feature embeddings."""
-        if isinstance(self.feature_extractor, FeatureExtractor):
-            features = self.feature_extractor.extract(audio, sr)
-        else:
-            features = self.feature_extractor(audio, sr)
+        features = extract_frame_features(self.feature_extractor, audio, sr)
         
         frame_segments = greedy_cosine_segment(
             features,
@@ -486,12 +611,12 @@ class GreedyCosineSegmenter(End2EndSegmenter):
             segment_features = features[start_frame:end_frame]
             embeddings.append(np.mean(segment_features, axis=0))
             
-            # Find nucleus: frame with highest average cosine similarity in segment
+            # Nucleus: frame with highest cosine similarity to the segment centroid.
             if end_frame - start_frame > 1:
-                segment_norm = segment_features / (np.linalg.norm(segment_features, axis=1, keepdims=True) + 1e-8)
-                segment_ssm = segment_norm @ segment_norm.T
-                avg_similarities = segment_ssm.mean(axis=1)
-                nucleus_frame = start_frame + np.argmax(avg_similarities)
+                centroid = segment_features.mean(axis=0)
+                centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
+                feat_norm = segment_features / (np.linalg.norm(segment_features, axis=1, keepdims=True) + 1e-8)
+                nucleus_frame = start_frame + int(np.argmax(feat_norm @ centroid_norm))
             else:
                 nucleus_frame = start_frame
             
@@ -505,6 +630,10 @@ class GreedyCosineSegmenter(End2EndSegmenter):
 
 __all__ = [
     'cosine_similarity',
+    'compute_greedy_cosine_norms',
+    'compute_greedy_cosine_mask',
+    'compute_greedy_cosine_merge_similarity_trace',
+    'greedy_cosine_segments_to_envelope',
     'greedy_cosine_segment',
     'greedy_cosine_segment_to_times',
     'greedy_cosine_segment_with_features',

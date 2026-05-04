@@ -65,8 +65,8 @@ def cmd_segment(args: argparse.Namespace) -> int:
             syllables, envelope, times = segment_audio(
                 audio_path,
                 samplerate=args.samplerate,
-                envelope_fn=args.envelope,
-                segment_fn=args.method,
+                method=args.method,
+                segmentation_kwargs={"envelope_method": args.envelope},
             )
         except Exception as e:  # pragma: no cover - CLI convenience
             print(f"Error processing {audio_path}: {e}", file=sys.stderr)
@@ -93,12 +93,14 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     df = run_evaluation(
         textgrid_paths=args.textgrid_glob,
         wav_paths=args.wav_glob,
-        phone_tier=args.phone_tier,
-        syllable_tier=args.syllable_tier,
-        word_tier=args.word_tier,
+        tiers={
+            "phone": args.phone_tier,
+            **({"syllable": args.syllable_tier} if args.syllable_tier is not None else {}),
+            **({"word": args.word_tier} if args.word_tier is not None else {}),
+        },
         tolerance=args.tolerance,
-        envelope_fn=args.envelope,
-        segmentation_fn=args.method,
+        method=args.method,
+        segmentation_kwargs={"envelope_method": args.envelope},
         tg_suffix_to_strip=args.suffix_strip,
     )
     if df.empty:

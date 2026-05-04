@@ -12,6 +12,10 @@ import numpy as np
 from typing import Tuple, Optional, Union, List
 import warnings
 
+from ..envelope.dispatch import get_amplitude_envelope
+
+from ..features import get_extractor
+
 
 # Global model cache for lazy loading
 _SYLBER_SEGMENTER = None
@@ -116,6 +120,7 @@ def extract_features(
             - 'vg_hubert': VG-HuBERT model (768-dim, ~50 fps)
             - 'mfcc': Mel-frequency cepstral coefficients
             - 'melspec': Mel-spectrogram
+            - 'rms'/'hilbert'/'lowpass'/'sbs'/'theta': Envelope-derived 1-D features
         layer: Layer index for neural models (model-specific defaults if None)
         device: 'auto', 'cuda', 'cpu' (for neural models)
         return_times: If True, return time points for each frame
@@ -149,10 +154,13 @@ def extract_features(
     elif method == 'melspec':
         features, times = _extract_melspec_features(audio, sr, **kwargs)
         result = (features, times) if not return_segments else (features, times, None)
+    elif method in {'rms', 'hilbert', 'lowpass', 'sbs', 'theta'}:
+        features, times = _extract_envelope_features(audio, sr, method=method, **kwargs)
+        result = (features, times) if not return_segments else (features, times, None)
     else:
         raise ValueError(
             f"Unknown feature extraction method: '{method}'. "
-            f"Supported methods: 'sylber', 'vg_hubert', 'mfcc', 'melspec'"
+            f"Supported methods: 'sylber', 'vg_hubert', 'mfcc', 'melspec', 'rms', 'hilbert', 'lowpass', 'sbs', 'theta'"
         )
     
     # Handle return format
@@ -337,6 +345,22 @@ def _extract_vg_hubert_features(
     return features, times
 
 
+def _extract_envelope_features(
+    audio: np.ndarray,
+    sr: int,
+    method: str,
+    **kwargs,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Extract envelope-based 1-D features for pooling/segmentation."""
+    envelope, times = get_amplitude_envelope(audio, sr, method=method, **kwargs)
+    envelope = np.asarray(envelope, dtype=np.float32)
+    if envelope.ndim == 1:
+        features = envelope[:, None]
+    else:
+        features = envelope
+    return features, np.asarray(times, dtype=np.float32)
+
+
 def _extract_mfcc_features(
     audio: np.ndarray,
     sr: int,
@@ -469,3 +493,64 @@ def _extract_melspec_features(
     )
     
     return features, times
+
+
+def _extract_features_v3(
+    audio: np.ndarray,
+    sr: int,
+    method: str = 'sylber',
+    layer: Optional[int] = None,
+    device: str = 'auto',
+    return_times: bool = False,
+    return_segments: bool = False,
+    **kwargs
+) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray, None]]:
+    """Thin adapter to the shared features module.
+
+    This override keeps the old function signature but routes extraction through
+    `findsylls.features` to avoid duplicated feature implementations.
+    """
+    feature_type = method.lower().replace('-', '').replace('_', '')
+    aliases = {
+        'melspec': 'mel',
+        'melspectrogram': 'mel',
+        'vghubert': 'vghubert',
+        'spectralbandsubtraction': 'sbs',
+    }
+    feature_type = aliases.get(feature_type, feature_type)
+
+    envelope_methods = {'rms', 'hilbert', 'lowpass', 'sbs', 'theta'}
+    if feature_type in envelope_methods:
+        features, times = _extract_envelope_features(audio, sr, method=feature_type, **kwargs)
+        if not return_times and not return_segments:
+            return features
+        if return_segments:
+            return features, times, None
+        return features, times
+
+    extractor_override = kwargs.pop("feature_extractor", None)
+    extractor_kwargs = dict(kwargs)
+    if layer is not None:
+        extractor_kwargs.setdefault('layer', layer)
+        extractor_kwargs.setdefault('encoding_layer', layer)
+    
+    # Only pass device to neural feature extractors that accept it
+    # (mfcc, mel, spectrogram are CPU-only and don't accept device)
+    neural_extractors = {'sylber', 'vghubert', 'hubert'}
+    if device is not None and feature_type in neural_extractors:
+        extractor_kwargs.setdefault('device', device)
+
+    extractor = extractor_override if extractor_override is not None else get_extractor(feature_type, **extractor_kwargs)
+    features = extractor.extract(audio, sr)
+
+    if not return_times and not return_segments:
+        return features
+
+    times = np.arange(features.shape[0], dtype=np.float64) / float(extractor.frame_rate)
+    if return_segments:
+        return features, times, None
+    return features, times
+
+
+# Route the public API through the shared-features adapter.
+extract_features = _extract_features_v3

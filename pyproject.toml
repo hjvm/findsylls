@@ -85,5 +85,5 @@ line-length = 100
 select = ["E","F","I"]
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -p no:hydra_pytest"
 python_files = ["test_*.py"]

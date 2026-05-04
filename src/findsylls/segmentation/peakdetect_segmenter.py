@@ -56,6 +56,23 @@ def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> Lis
     Returns:
         List of (start, nucleus, end) tuples in seconds
     """
+    envelope = np.asarray(envelope)
+    times = np.asarray(times)
+
+    if envelope.ndim != 1:
+        raise ValueError(
+            f"segment_peakdetect expects a 1-D envelope, got array with shape {envelope.shape}."
+        )
+    if times.ndim != 1:
+        raise ValueError(
+            f"segment_peakdetect expects a 1-D times array, got array with shape {times.shape}."
+        )
+    if envelope.shape[0] != times.shape[0]:
+        raise ValueError(
+            "segment_peakdetect expects envelope and times arrays to have identical length; "
+            f"got {envelope.shape[0]} and {times.shape[0]}."
+        )
+
     delta = kwargs.get("delta", 0.01)
     min_syllable_dur = kwargs.get("min_syllable_dur", 0.05)
     onset = kwargs.get("onset", 0.05)
@@ -225,6 +242,25 @@ class PeakdetectSegmenter(EnvelopeBasedSegmenter):
         else:
             if times is None:
                 raise ValueError("Must provide times array when using pre-computed envelope")
+
+        envelope_arr = np.asarray(envelope)
+        if envelope_arr.ndim != 1:
+            raise ValueError(
+                "PeakdetectSegmenter requires a 1-D envelope. "
+                f"Got shape {envelope_arr.shape}; use an explicit envelope method/pseudo-envelope first."
+            )
+
+        times_arr = np.asarray(times)
+        if times_arr.ndim != 1:
+            raise ValueError(
+                f"PeakdetectSegmenter requires a 1-D times array; got shape {times_arr.shape}."
+            )
+
+        if envelope_arr.shape[0] != times_arr.shape[0]:
+            raise ValueError(
+                "PeakdetectSegmenter requires envelope and times arrays of equal length; "
+                f"got {envelope_arr.shape[0]} and {times_arr.shape[0]}."
+            )
         
         # Build kwargs - use instance params unless overridden
         peak_kwargs = {
@@ -244,12 +280,7 @@ class PeakdetectSegmenter(EnvelopeBasedSegmenter):
         return segment_peakdetect(envelope, times, **peak_kwargs)
 
 
-# Legacy names for backward compatibility
-segment_billauer = segment_peakdetect
-
-
 __all__ = [
     "segment_peakdetect",
-    "segment_billauer", 
     "PeakdetectSegmenter",
 ]

@@ -5,6 +5,7 @@ These functions are used by the higher‑level pipeline:
  - match_wavs_to_textgrids: fuzzy pair matching between wav/flac files and TextGrid annotations
 """
 from __future__ import annotations
+import glob as _glob
 import re
 from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
@@ -82,7 +83,12 @@ def _collect_files(patterns: Sequence[str] | str, exts: set[str]) -> List[Path]:
         patterns = [str(patterns)]
     files: List[Path] = []
     for p in patterns:
-        for match in Path().glob(p):
+        matches = [Path(m) for m in _glob.glob(str(p), recursive=True)]
+        if not matches:
+            candidate = Path(p)
+            if candidate.exists():
+                matches = [candidate]
+        for match in matches:
             if match.suffix.lower() in exts:
                 files.append(match)
     return sorted(files)

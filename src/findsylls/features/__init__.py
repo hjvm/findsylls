@@ -77,7 +77,7 @@ def get_extractor(feature_type: str, **kwargs) -> FeatureExtractor:
         return HuBERTExtractor(**kwargs)
     elif feature_type in ['sylber']:
         return SylberFeatureExtractor(**kwargs)
-    elif feature_type in ['vghubert', 'vghubert']:
+    elif feature_type in ['vghubert']:
         return VGHuBERTFeatureExtractor(**kwargs)
     elif feature_type in ['mfcc']:
         return MFCCExtractor(**kwargs)
