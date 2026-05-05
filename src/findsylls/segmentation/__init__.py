@@ -27,7 +27,7 @@ from .mincut import (
 )
 from .greedy_cosine import GreedyCosineSegmenter, greedy_cosine_segment
 from .cls_attention import CLSAttentionSegmenter
-from .presets import ThetaRasanenSegmenter, SylberSegmenter, VGHubertMinCutSegmenter, VGHubertCLSSegmenter
+from .presets import ThetaOscillatorSegmenter, SylberSegmenter, VGHubertMinCutSegmenter, VGHubertCLSSegmenter
 from ..features import (
     FeatureExtractor,
     HuBERTExtractor,
@@ -63,7 +63,7 @@ __all__ = [
     "greedy_cosine_segment",
     "CLSAttentionSegmenter",
     # Preset configurations from published papers
-    "ThetaRasanenSegmenter",
+    "ThetaOscillatorSegmenter",
     "SylberSegmenter",
     "VGHubertMinCutSegmenter",
     "VGHubertCLSSegmenter",

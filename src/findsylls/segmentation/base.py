@@ -113,6 +113,14 @@ class BaseSegmenter(ABC):
                 f"Invalid segment {i}: start={start}, nucleus={nucleus}, end={end}"
             assert start >= 0, f"Negative start time in segment {i}: {start}"
     
+    def cite(self) -> None:
+        """Print the reference for this segmenter's source paper, if available."""
+        ref = getattr(self.__class__, "REFERENCE", None)
+        if ref:
+            print(ref)
+        else:
+            print(f"{self.__class__.__name__} has no associated paper reference.")
+
     def __call__(self, **kwargs) -> List[Tuple[float, float, float]]:
         """Allow using segmenter as callable."""
         return self.segment(**kwargs)

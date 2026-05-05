@@ -11,7 +11,7 @@ For flexibility and custom configurations, use the generic wrappers:
 - PeakdetectSegmenter(envelope_computer, **params)
 
 Available presets:
-- ThetaRasanenSegmenter: Theta oscillator + peakdetect (Räsänen et al. 2018)
+- ThetaOscillatorSegmenter: Theta oscillator + peakdetect (Räsänen et al. 2018)
 - SylberSegmenter: Sylber with greedy cosine (Cho et al. 2025)
 - VGHubertMinCutSegmenter: VG-HuBERT with SSM + MinCut (Peng et al. 2023)
 - VGHubertCLSSegmenter: VG-HuBERT with CLS attention (Peng et al. 2023)
@@ -28,7 +28,7 @@ from .peakdetect_segmenter import PeakdetectSegmenter
 from ..features import SylberFeatureExtractor, VGHuBERTFeatureExtractor
 
 
-class ThetaRasanenSegmenter(EnvelopeBasedSegmenter):
+class ThetaOscillatorSegmenter(EnvelopeBasedSegmenter):
     """
     Theta oscillator syllable segmentation (Räsänen, Doyle & Frank 2018).
 
@@ -61,10 +61,20 @@ class ThetaRasanenSegmenter(EnvelopeBasedSegmenter):
         delta: Valley depth threshold for boundary detection (default: 0.025, paper default)
 
     Example:
-        >>> segmenter = ThetaRasanenSegmenter()
+        >>> segmenter = ThetaOscillatorSegmenter()
         >>> segments = segmenter.segment(audio, sr=16000)
         >>> # Returns [(start, nucleus, end), ...]
+        >>> segmenter.cite()
+        >>> # Prints full citation and MATLAB source URL
     """
+
+    REFERENCE = (
+        "Räsänen, O., Doyle, G., & Frank, M. C. (2018). "
+        '"Pre-linguistic segmentation of speech into syllable-like units." '
+        "Cognition, 171, 130–150. "
+        "https://doi.org/10.1016/j.cognition.2017.11.003\n"
+        "MATLAB implementation: https://github.com/orasanen/thetaOscillator"
+    )
 
     def __init__(
         self,
@@ -127,18 +137,26 @@ class SylberSegmenter(End2EndSegmenter):
         Cho, C. J., Lee, N., Gupta, A., Agarwal, D., Chen, E., Black, A. W., &
         Anumanchipalli, G. K. (2025). "Sylber: Syllabic Embedding Representation
         of Speech from Raw Audio." ICLR 2025. arXiv:2410.07168.
-    
+
     Args:
         norm_threshold: Energy threshold for silence detection (default: 2.6)
         merge_threshold: Cosine similarity threshold for merging (default: 0.8)
         device: Device for model ('cuda', 'cpu', or None for auto-detect)
         sample_rate: Target sample rate (default: 16000)
-    
+
     Example:
         >>> segmenter = SylberSegmenter()
         >>> segments = segmenter.segment(audio, sr=16000)
         >>> # Returns [(start, nucleus, end), ...]
+        >>> segmenter.cite()
     """
+
+    REFERENCE = (
+        "Cho, C. J., Lee, N., Gupta, A., Agarwal, D., Chen, E., Black, A. W., & "
+        "Anumanchipalli, G. K. (2025). "
+        '"Sylber: Syllabic Embedding Representation of Speech from Raw Audio." '
+        "ICLR 2025. https://arxiv.org/abs/2410.07168"
+    )
     
     def __init__(
         self,
@@ -236,7 +254,16 @@ class VGHubertMinCutSegmenter(End2EndSegmenter):
         >>>
         >>> # Word segmentation (auto layer=9)
         >>> word_segmenter = VGHubertMinCutSegmenter(mode='word', sec_per_syllable=0.4)
+        >>> segmenter.cite()
     """
+
+    REFERENCE = (
+        "Peng, P., Shang, Z., Harwath, D., & others (2023). "
+        '"Syllable Discovery and Cross-Lingual Generalization in a Visually Grounded, '
+        'Self-Supervised Speech Model." Interspeech 2023. '
+        "https://doi.org/10.21437/Interspeech.2023-1430\n"
+        "Code: https://github.com/jasonppy/syllable-discovery"
+    )
 
     def __init__(
         self,
@@ -331,7 +358,16 @@ class VGHubertCLSSegmenter(End2EndSegmenter):
         >>>
         >>> # Syllable-checkpoint variant (non-canonical)
         >>> syl_segmenter = VGHubertCLSSegmenter(mode='syllable')
+        >>> segmenter.cite()
     """
+
+    REFERENCE = (
+        "Peng, P., & Harwath, D. (2022). "
+        '"Self-Supervised Representation Learning for Speech Using Visual Grounding '
+        'and Masked Language Modeling." Interspeech 2022. '
+        "https://doi.org/10.21437/Interspeech.2022-10631\n"
+        "Code: https://github.com/jasonppy/word-discovery"
+    )
 
     def __init__(
         self,
