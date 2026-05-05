@@ -46,3 +46,6 @@ REBUILD_2X_BLUEPRINT.md
 # Old code/versions of this repo
 legacy/
 models/
+
+# Reference implementations cloned for parity testing (not part of the package)
+reference_repos/
