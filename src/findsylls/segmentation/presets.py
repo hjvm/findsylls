@@ -8,8 +8,10 @@ feature extractor with an algorithm using the paper's hyperparameters.
 For flexibility and custom configurations, use the generic wrappers:
 - MinCutSegmenter(feature_extractor, **params)
 - GreedyCosineSegmenter(feature_extractor, **params)
+- PeakdetectSegmenter(envelope_computer, **params)
 
 Available presets:
+- ThetaRasanenSegmenter: Theta oscillator + peakdetect (Räsänen et al. 2018)
 - SylberSegmenter: Sylber with greedy cosine (Cho et al. 2025)
 - VGHubertMinCutSegmenter: VG-HuBERT with SSM + MinCut (Peng et al. 2023)
 - VGHubertCLSSegmenter: VG-HuBERT with CLS attention (Peng et al. 2023)
@@ -18,11 +20,95 @@ Available presets:
 from typing import List, Tuple, Optional
 import numpy as np
 
-from .base import End2EndSegmenter
+from .base import End2EndSegmenter, EnvelopeBasedSegmenter
 from .cls_attention import CLSAttentionSegmenter
 from .greedy_cosine import GreedyCosineSegmenter
 from .mincut import MinCutSegmenter
+from .peakdetect_segmenter import PeakdetectSegmenter
 from ..features import SylberFeatureExtractor, VGHuBERTFeatureExtractor
+
+
+class ThetaRasanenSegmenter(EnvelopeBasedSegmenter):
+    """
+    Theta oscillator syllable segmentation (Räsänen, Doyle & Frank 2018).
+
+    Replicates the paper's canonical configuration from thetaOscillator.m:
+    - Envelope: gammatone filterbank (20 bands, 50–7500 Hz, ERB-spaced, 1 kHz)
+                → Hilbert envelope → harmonic damped oscillator bank → sonority
+    - Parameters: f=5 Hz, Q=0.5, N=8 (top-8 bands)
+    - Segmentation: Billauer valley-picking with depth threshold delta=0.025,
+                    lookahead=1 (sample-by-sample, matching MATLAB peakdet.m)
+
+    This is equivalent to:
+        PeakdetectSegmenter(ThetaEnvelope(f=5, Q=0.5, N=8), delta=0.025, lookahead=1)
+
+    Known divergence from the original MATLAB implementation:
+        The MATLAB code uses gammatone_c (a custom C gammatone filterbank) while
+        this implementation uses the detly/gammatone ERB filterbank. The oscillator
+        logic, delay table, and valley-picking algorithm are algebraically identical.
+        Quantitative output parity against the Python port reference is confirmed at
+        floating-point epsilon; parity against MATLAB is limited by the filterbank.
+
+    Reference:
+        Räsänen, O., Doyle, G., & Frank, M. C. (2018). "Pre-linguistic segmentation
+        of speech into syllable-like units." Cognition, 171, 130–150.
+        MATLAB code: github.com/orasanen/thetaOscillator
+
+    Args:
+        f: Oscillator center frequency in Hz (default: 5, paper default)
+        Q: Q-factor / damping ratio (default: 0.5, paper default)
+        N: Number of most-energetic bands to sum for sonority (default: 8, paper default)
+        delta: Valley depth threshold for boundary detection (default: 0.025, paper default)
+
+    Example:
+        >>> segmenter = ThetaRasanenSegmenter()
+        >>> segments = segmenter.segment(audio, sr=16000)
+        >>> # Returns [(start, nucleus, end), ...]
+    """
+
+    def __init__(
+        self,
+        f: float = 5,
+        Q: float = 0.5,
+        N: int = 8,
+        delta: float = 0.025,
+    ):
+        super().__init__()
+        from ..envelope.theta import ThetaEnvelope
+        self._segmenter = PeakdetectSegmenter(
+            ThetaEnvelope(f=f, Q=Q, N=N),
+            delta=delta,
+            lookahead=1,
+        )
+        self.f = f
+        self.Q = Q
+        self.N = N
+        self.delta = delta
+
+    def segment(
+        self,
+        audio: Optional[np.ndarray] = None,
+        sr: Optional[int] = None,
+        envelope: Optional[np.ndarray] = None,
+        times: Optional[np.ndarray] = None,
+        **kwargs,
+    ) -> List[Tuple[float, float, float]]:
+        """
+        Segment audio using the theta oscillator envelope + valley-picking.
+
+        Args:
+            audio: Raw audio waveform (mono)
+            sr: Sample rate
+            envelope: Pre-computed sonority envelope (skips oscillator computation)
+            times: Time array for pre-computed envelope
+            **kwargs: Override delta, lookahead, min_syllable_dur
+
+        Returns:
+            List of (start, nucleus, end) tuples in seconds
+        """
+        if envelope is not None and times is not None:
+            return self._segmenter.segment(envelope=envelope, times=times, **kwargs)
+        return self._segmenter.segment(audio=audio, sr=sr, **kwargs)
 
 
 class SylberSegmenter(End2EndSegmenter):
