@@ -1,5 +1,5 @@
 """
-Preset segmenter configurations from published papers.
+Preset segmenter configurations from published papers and reference baselines.
 
 These classes provide pre-configured segmenters that replicate the exact
 configurations reported in the original papers. Each class composes a
@@ -11,10 +11,11 @@ For flexibility and custom configurations, use the generic wrappers:
 - PeakdetectSegmenter(envelope_computer, **params)
 
 Available presets:
+- SBSPeakdetectSegmenter: SBS envelope + peakdetect (dissertation baseline)
 - ThetaOscillatorSegmenter: Theta oscillator + peakdetect (Räsänen et al. 2018)
 - SylberSegmenter: Sylber with greedy cosine (Cho et al. 2025)
 - VGHubertMinCutSegmenter: VG-HuBERT with SSM + MinCut (Peng et al. 2023)
-- VGHubertCLSSegmenter: VG-HuBERT with CLS attention (Peng et al. 2023)
+- VGHubertCLSSegmenter: VG-HuBERT with CLS attention (Peng et al. 2022)
 """
 
 from typing import List, Tuple, Optional
@@ -26,6 +27,101 @@ from .greedy_cosine import GreedyCosineSegmenter
 from .mincut import MinCutSegmenter
 from .peakdetect_segmenter import PeakdetectSegmenter
 from ..features import SylberFeatureExtractor, VGHuBERTFeatureExtractor
+
+
+class SBSPeakdetectSegmenter(EnvelopeBasedSegmenter):
+    """
+    Spectral Band Subtraction envelope + peak detection (dissertation baseline).
+
+    Replicates the experimental baseline configuration used in the dissertation:
+    - Envelope: SBS (low-frequency minus high-frequency spectral energy, pivot at 3000 Hz,
+                Hamming-smoothed at 70 ms / 7 samples at 100 Hz frame rate)
+    - Segmentation: Billauer valley-picking with max syllable duration cap (400 ms)
+                    and shallow-valley filter (merge valleys shallower than 40% of local max)
+
+    This is equivalent to:
+        PeakdetectSegmenter(
+            SBSEnvelope(pivot_freq=3000, smoothing_window_samples=7),
+            delta=0.01,
+            max_syllable_dur=0.4,
+            amplitude_ratio_tol=0.4,
+        )
+
+    Reference:
+        Vázquez, H. J. (in preparation). University of Pennsylvania doctoral dissertation.
+
+    Args:
+        pivot_freq: Frequency (Hz) dividing low- from high-energy bands (default: 3000)
+        smoothing_window_samples: Hamming window length for envelope smoothing in frames
+                                  (default: 7 = 70 ms at 100 Hz frame rate)
+        delta: Billauer valley depth threshold (default: 0.01)
+        max_syllable_dur: Maximum allowed syllable duration in seconds (default: 0.4)
+        amplitude_ratio_tol: Shallow-valley merge threshold as fraction of local max
+                             (default: 0.4 — merge valleys shallower than 40% of local peak)
+
+    Example:
+        >>> segmenter = SBSPeakdetectSegmenter()
+        >>> segments = segmenter.segment(audio, sr=16000)
+        >>> segmenter.cite()
+    """
+
+    REFERENCE = (
+        "Vázquez, H. J. (in preparation). "
+        "University of Pennsylvania doctoral dissertation. "
+        "Baseline configuration: SBS envelope (pivot_freq=3000 Hz, "
+        "smoothing_window=70 ms at 100 Hz) + Billauer peak detection "
+        "(delta=0.01, max_syllable_dur=0.4 s, amplitude_ratio_tol=0.4)."
+    )
+
+    def __init__(
+        self,
+        pivot_freq: int = 3000,
+        smoothing_window_samples: int = 7,
+        delta: float = 0.01,
+        max_syllable_dur: float = 0.4,
+        amplitude_ratio_tol: float = 0.4,
+    ):
+        super().__init__()
+        from ..envelope.sbs import SBSEnvelope
+        self._segmenter = PeakdetectSegmenter(
+            SBSEnvelope(
+                pivot_freq=pivot_freq,
+                smoothing_window_samples=smoothing_window_samples,
+            ),
+            delta=delta,
+            max_syllable_dur=max_syllable_dur,
+            amplitude_ratio_tol=amplitude_ratio_tol,
+        )
+        self.pivot_freq = pivot_freq
+        self.smoothing_window_samples = smoothing_window_samples
+        self.delta = delta
+        self.max_syllable_dur = max_syllable_dur
+        self.amplitude_ratio_tol = amplitude_ratio_tol
+
+    def segment(
+        self,
+        audio=None,
+        sr=None,
+        envelope=None,
+        times=None,
+        **kwargs,
+    ) -> List[Tuple[float, float, float]]:
+        """
+        Segment audio using SBS envelope + valley-picking.
+
+        Args:
+            audio: Raw audio waveform (mono)
+            sr: Sample rate
+            envelope: Pre-computed SBS envelope (skips envelope computation)
+            times: Time array for pre-computed envelope
+            **kwargs: Override delta, max_syllable_dur, amplitude_ratio_tol, etc.
+
+        Returns:
+            List of (start, nucleus, end) tuples in seconds
+        """
+        if envelope is not None and times is not None:
+            return self._segmenter.segment(envelope=envelope, times=times, **kwargs)
+        return self._segmenter.segment(audio=audio, sr=sr, **kwargs)
 
 
 class ThetaOscillatorSegmenter(EnvelopeBasedSegmenter):
@@ -424,6 +520,7 @@ class VGHubertCLSSegmenter(End2EndSegmenter):
 # ---------------------------------------------------------------------------
 
 _SEGMENTER_PRESETS = {
+    "sbs_peakdetect": SBSPeakdetectSegmenter,
     "theta_oscillator": ThetaOscillatorSegmenter,
     "sylber": SylberSegmenter,
     "vg_hubert_mincut": VGHubertMinCutSegmenter,

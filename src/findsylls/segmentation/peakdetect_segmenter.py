@@ -40,19 +40,24 @@ from ..envelope.base import EnvelopeComputer
 def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> List[Tuple[float, float, float]]:
     """
     Segment envelope into syllable-like units using Billauer's peak detection algorithm.
-    
+
     Args:
         envelope: Amplitude envelope (1D array)
         times: Time array corresponding to envelope samples (in seconds)
         **kwargs: Segmentation parameters:
             - delta: Minimum peak/valley height difference (default: 0.01)
             - min_syllable_dur: Minimum syllable duration in seconds (default: 0.05)
+            - max_syllable_dur: Maximum syllable duration in seconds (default: None, no cap)
             - onset: Time threshold for adding initial/final valleys (default: 0.05)
             - merge_valley_tol: Time tolerance for merging nearby valleys (default: 0.05)
+            - amplitude_ratio_tol: Shallow-valley filter — valleys whose amplitude exceeds
+                                   this fraction of the local peak maximum are merged.
+                                   E.g., 0.4 removes valleys shallower than 40% of local max.
+                                   (default: None, disabled)
             - min_amplitude_threshold: Minimum amplitude as fraction of max envelope (default: 0.0)
                                       Filters peaks in silent regions. E.g., 0.1 = 10% of max.
             - lookahead: Samples to look ahead (auto-computed from min_syllable_dur if None)
-    
+
     Returns:
         List of (start, nucleus, end) tuples in seconds
     """
@@ -75,37 +80,52 @@ def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> Lis
 
     delta = kwargs.get("delta", 0.01)
     min_syllable_dur = kwargs.get("min_syllable_dur", 0.05)
+    max_syllable_dur = kwargs.get("max_syllable_dur", None)
     onset = kwargs.get("onset", 0.05)
     merge_tol = kwargs.get("merge_valley_tol", 0.05)
-    min_amplitude_threshold = kwargs.get("min_amplitude_threshold", 0.0)  # NEW: Filter low-amplitude peaks
+    amplitude_ratio_tol = kwargs.get("amplitude_ratio_tol", None)
+    min_amplitude_threshold = kwargs.get("min_amplitude_threshold", 0.0)
 
-    # Auto-compute lookahead if not explicitly provided
     if 'lookahead' in kwargs:
-        # Use explicit value if provided (for testing/comparison)
         lookahead = kwargs['lookahead']
     else:
-        # Calculate lookahead based on min_syllable_dur.
-        # Use half the min duration to avoid finding multiple peaks per syllable.
-        lookahead_time = min_syllable_dur / 2.0  # e.g., 0.025s for default 0.05s
-        
-        # Convert time to samples based on envelope sampling rate
-        dt = times[1] - times[0] if len(times) > 1 else 0.01  # Time per envelope sample
+        lookahead_time = min_syllable_dur / 2.0
+        dt = times[1] - times[0] if len(times) > 1 else 0.01
         lookahead = max(1, int(lookahead_time / dt))
-    
-    # NEW: Calculate amplitude threshold (relative to max envelope value)
-    # min_amplitude_threshold is a fraction (e.g., 0.1 = 10% of max amplitude)
+
     if min_amplitude_threshold > 0:
-        envelope_max = np.max(envelope)
-        amplitude_cutoff = min_amplitude_threshold * envelope_max
+        amplitude_cutoff = min_amplitude_threshold * np.max(envelope)
     else:
-        amplitude_cutoff = -np.inf  # No filtering
+        amplitude_cutoff = -np.inf
 
     raw_peaks, raw_valleys = peakdetect(envelope, lookahead=lookahead, delta=delta, x_axis=times)
-    peaks = np.array([p[0] for p in raw_peaks])
+    peak_times = np.array([p[0] for p in raw_peaks])
+    peak_vals = np.array([p[1] for p in raw_peaks])
     valleys_times = np.array([v[0] for v in raw_valleys])
     valleys_vals = np.array([v[1] for v in raw_valleys])
-    if peaks.size == 0 or valleys_times.size == 0:
+
+    if peak_times.size == 0 or valleys_times.size == 0:
         return []
+
+    # Shallow-valley filter: remove valleys that don't dip below
+    # amplitude_ratio_tol * local_max (local_max = adjacent peak amplitudes).
+    if amplitude_ratio_tol is not None and peak_vals.size > 0:
+        keep = np.ones(len(valleys_times), dtype=bool)
+        for i, (vt, vv) in enumerate(zip(valleys_times, valleys_vals)):
+            left_peaks = peak_vals[peak_times < vt]
+            right_peaks = peak_vals[peak_times > vt]
+            left_max = float(left_peaks[-1]) if left_peaks.size > 0 else 0.0
+            right_max = float(right_peaks[0]) if right_peaks.size > 0 else 0.0
+            local_max = max(left_max, right_max)
+            if local_max > 0 and vv > amplitude_ratio_tol * local_max:
+                keep[i] = False
+        valleys_times = valleys_times[keep]
+        valleys_vals = valleys_vals[keep]
+
+    if valleys_times.size == 0:
+        return []
+
+    # Time-based merge: group consecutive close valleys, keep deepest.
     diffs = np.diff(valleys_times)
     break_idxs = np.nonzero(diffs > merge_tol)[0] + 1
     groups = np.split(np.arange(len(valleys_times)), break_idxs)
@@ -115,23 +135,25 @@ def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> Lis
         best_idx = grp[np.argmin(sub_vals)]
         merged_valleys.append(valleys_times[best_idx])
     valleys = np.array(merged_valleys)
+
     if valleys[0] > onset:
         valleys = np.insert(valleys, 0, 0.0)
     if valleys[-1] < times[-1] - onset:
         valleys = np.append(valleys, times[-1])
+
     syllables = []
     for i in range(1, len(valleys)):
         left, right = valleys[i-1], valleys[i]
-        mid_peaks = peaks[(peaks > left) & (peaks < right)]
+        mid_peaks = peak_times[(peak_times > left) & (peak_times < right)]
         if mid_peaks.size == 0:
             continue
         best_peak = max(mid_peaks, key=lambda tsec: envelope[np.argmin(np.abs(times - tsec))])
-        
-        # Get amplitude at peak (nucleus)
         peak_amplitude = envelope[np.argmin(np.abs(times - best_peak))]
-        
-        # Filter by duration AND amplitude
-        if (right - left) >= min_syllable_dur and peak_amplitude >= amplitude_cutoff:
+
+        dur = right - left
+        if (dur >= min_syllable_dur
+                and peak_amplitude >= amplitude_cutoff
+                and (max_syllable_dur is None or dur <= max_syllable_dur)):
             syllables.append((left, best_peak, right))
     return syllables
 
@@ -155,11 +177,15 @@ class PeakdetectSegmenter(EnvelopeBasedSegmenter):
         delta: Minimum peak/valley height difference (default: 0.01)
         lookahead: Samples to look ahead for peak detection (auto-computed if None)
         min_syllable_dur: Minimum syllable duration in seconds (default: 0.05)
+        max_syllable_dur: Maximum syllable duration in seconds (default: None, no cap)
         onset: Time threshold for adding initial/final valleys (default: 0.05)
         merge_valley_tol: Time tolerance for merging nearby valleys (default: 0.05)
+        amplitude_ratio_tol: Shallow-valley filter. Valleys whose amplitude exceeds this
+                             fraction of the local peak maximum are merged (removed as
+                             boundaries). E.g., 0.4 removes valleys shallower than 40% of
+                             local max. (default: None, disabled)
         min_amplitude_threshold: Minimum amplitude threshold as fraction of max envelope
                                  amplitude (default: 0.0). Filters peaks in silent regions.
-                                 E.g., 0.1 means peaks must be at least 10% of max amplitude.
     
     Examples:
         >>> # Classical envelope
@@ -185,8 +211,10 @@ class PeakdetectSegmenter(EnvelopeBasedSegmenter):
         delta: float = 0.01,
         lookahead: Optional[int] = None,
         min_syllable_dur: float = 0.05,
+        max_syllable_dur: Optional[float] = None,
         onset: float = 0.05,
         merge_valley_tol: float = 0.05,
+        amplitude_ratio_tol: Optional[float] = None,
         min_amplitude_threshold: float = 0.0,
     ):
         super().__init__()
@@ -194,8 +222,10 @@ class PeakdetectSegmenter(EnvelopeBasedSegmenter):
         self.delta = delta
         self.lookahead = lookahead
         self.min_syllable_dur = min_syllable_dur
+        self.max_syllable_dur = max_syllable_dur
         self.onset = onset
         self.merge_valley_tol = merge_valley_tol
+        self.amplitude_ratio_tol = amplitude_ratio_tol
         self.min_amplitude_threshold = min_amplitude_threshold
     
     def segment(
@@ -266,8 +296,10 @@ class PeakdetectSegmenter(EnvelopeBasedSegmenter):
         peak_kwargs = {
             'delta': kwargs.get('delta', self.delta),
             'min_syllable_dur': kwargs.get('min_syllable_dur', self.min_syllable_dur),
+            'max_syllable_dur': kwargs.get('max_syllable_dur', self.max_syllable_dur),
             'onset': kwargs.get('onset', self.onset),
             'merge_valley_tol': kwargs.get('merge_valley_tol', self.merge_valley_tol),
+            'amplitude_ratio_tol': kwargs.get('amplitude_ratio_tol', self.amplitude_ratio_tol),
             'min_amplitude_threshold': kwargs.get('min_amplitude_threshold', self.min_amplitude_threshold),
         }
         

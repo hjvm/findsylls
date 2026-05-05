@@ -31,9 +31,14 @@ def spectral_band_subtraction(waveform, sr, **kwargs):
 
 class SBSEnvelope(EnvelopeComputer):
     """Compute spectral band subtraction envelope."""
-    
-    def __init__(self, pivot_freq=3000):
+
+    def __init__(self, pivot_freq=3000, smoothing_window_samples=7):
         self.pivot_freq = pivot_freq
-    
+        self.smoothing_window_samples = smoothing_window_samples
+
     def compute(self, audio: np.ndarray, sr: int):
-        return spectral_band_subtraction(audio, sr, pivot_freq=self.pivot_freq)
+        return spectral_band_subtraction(
+            audio, sr,
+            pivot_freq=self.pivot_freq,
+            smoothing_window_samples=self.smoothing_window_samples,
+        )
