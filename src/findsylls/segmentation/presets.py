@@ -412,8 +412,42 @@ class VGHubertCLSSegmenter(End2EndSegmenter):
             audio: Audio waveform (mono)
             sr: Sample rate
             **kwargs: Override parameters (quantile, min_distance)
-        
+
         Returns:
             List of (start, nucleus, end) tuples in seconds
         """
         return self._segmenter.segment(audio, sr, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Discovery helpers
+# ---------------------------------------------------------------------------
+
+_SEGMENTER_PRESETS = {
+    "theta_oscillator": ThetaOscillatorSegmenter,
+    "sylber": SylberSegmenter,
+    "vg_hubert_mincut": VGHubertMinCutSegmenter,
+    "vg_hubert_cls": VGHubertCLSSegmenter,
+}
+
+
+def list_segmenter_presets() -> dict:
+    """Return available preset segmenter names mapped to their classes.
+
+    These are paper-replication configurations with fixed hyperparameters.
+    Unlike ``list_presets()`` (which lists embedding pipeline configs), these
+    are standalone segmenters that can be used directly or composed into a
+    custom pipeline.
+
+    Returns:
+        Dict mapping preset name → segmenter class.
+
+    Example:
+        >>> from findsylls.segmentation.presets import list_segmenter_presets
+        >>> list_segmenter_presets()
+        {'theta_oscillator': ThetaOscillatorSegmenter, ...}
+        >>> for name, cls in list_segmenter_presets().items():
+        ...     print(name)
+        ...     print(cls.REFERENCE)
+    """
+    return dict(_SEGMENTER_PRESETS)

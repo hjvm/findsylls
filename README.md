@@ -131,30 +131,34 @@ fig = plot_multiple_envelope_segmentations(audio, sr, results)
 
 *The same audio segmented by `peakdetect` using three different envelope methods. Each panel shows how the chosen envelope shape influences where boundaries fall.*
 
-#### Neural — preset segmenters (`findsylls[end2end]`)
+#### Preset segmenters (paper-replication configurations)
 
-Preset classes replicate the exact configurations from published papers:
+Preset classes replicate the exact configurations from published papers. Each carries a `REFERENCE` attribute and a `cite()` method — see [Preset Citations](#preset-citations) below.
 
 ```python
 from findsylls.segmentation.presets import (
-    SylberSegmenter,          # Cho et al. 2025 — greedy cosine on Sylber HuBERT
-    VGHubertMinCutSegmenter,  # Peng et al. 2023 — SSM MinCut on VG-HuBERT
-    VGHubertCLSSegmenter,     # Peng & Harwath 2022 — CLS attention on VG-HuBERT
+    ThetaOscillatorSegmenter,  # Räsänen et al. 2018 — gammatone + oscillator (no GPU)
+    SylberSegmenter,           # Cho et al. 2025 — greedy cosine on Sylber HuBERT
+    VGHubertMinCutSegmenter,   # Peng et al. 2023 — SSM MinCut on VG-HuBERT
+    VGHubertCLSSegmenter,      # Peng & Harwath 2022 — CLS attention on VG-HuBERT
 )
 from findsylls.audio.utils import load_audio
 
 audio, sr = load_audio("audio.wav")
 
-# Sylber (default paper config)
+# Theta oscillator (no model download, paper defaults: f=5, Q=0.5, N=8)
+theta = ThetaOscillatorSegmenter()
+syllables = theta.segment(audio, sr=sr)
+
+# Sylber (requires findsylls[end2end])
 sylber = SylberSegmenter()
 syllables = sylber.segment(audio, sr=sr)
-print(f"Sylber: {len(syllables)} syllables")
 
-# VG-HuBERT MinCut (syllable mode, layer 8)
+# VG-HuBERT MinCut (syllable mode, layer 8; requires findsylls[end2end])
 vgh_mincut = VGHubertMinCutSegmenter(mode="syllable")
 syllables = vgh_mincut.segment(audio, sr=sr)
 
-# VG-HuBERT CLS attention (word mode, layer 9)
+# VG-HuBERT CLS attention (word mode, layer 9; requires findsylls[end2end])
 vgh_cls = VGHubertCLSSegmenter(mode="word")
 words = vgh_cls.segment(audio, sr=sr)
 ```
@@ -162,10 +166,13 @@ words = vgh_cls.segment(audio, sr=sr)
 #### Generic dispatch
 
 ```python
-from findsylls.segmentation import get_segmenter, list_segmenters
+from findsylls.segmentation import get_segmenter, list_segmenters, list_segmenter_presets
 
 print(list_segmenters())
 # ['peakdetect', 'cls_attention', 'mincut', 'greedy_cosine']
+
+print(list_segmenter_presets())
+# {'theta_oscillator': ThetaOscillatorSegmenter, 'sylber': SylberSegmenter, ...}
 
 segmenter = get_segmenter("mincut")
 syllables = segmenter.segment(audio, sr=sr)
@@ -511,7 +518,7 @@ findsylls evaluate "data/**/*.wav" "data/**/*.TextGrid" \
 `peakdetect` · `cls_attention` · `mincut` · `greedy_cosine`
 
 ### Preset segmenters (paper-replication classes)
-`SylberSegmenter` · `VGHubertMinCutSegmenter` · `VGHubertCLSSegmenter`
+`ThetaOscillatorSegmenter` · `SylberSegmenter` · `VGHubertMinCutSegmenter` · `VGHubertCLSSegmenter`
 
 ### Feature extractors
 `mfcc` · `melspectrogram` · `hubert` · `sylber` · `vghubert`
@@ -521,6 +528,52 @@ findsylls evaluate "data/**/*.wav" "data/**/*.TextGrid" \
 
 ### Discovery methods
 `kmeans` · `minibatch_kmeans` · `agglomerative`
+
+---
+
+## Preset Citations
+
+Every preset segmenter ships with the full citation for its source paper. Access it programmatically without loading any model:
+
+```python
+from findsylls.segmentation.presets import list_segmenter_presets
+
+for name, cls in list_segmenter_presets().items():
+    print(f"[{name}]")
+    print(cls.REFERENCE)
+    print()
+```
+
+Or on an instance (useful when you already have the object):
+
+```python
+seg = ThetaOscillatorSegmenter()
+seg.cite()
+```
+
+---
+
+**Theta Oscillator** — Räsänen, Doyle & Frank (2018)
+
+> Räsänen, O., Doyle, G., & Frank, M. C. (2018). "Pre-linguistic segmentation of speech into syllable-like units." *Cognition*, 171, 130–150. https://doi.org/10.1016/j.cognition.2017.11.003
+>
+> MATLAB implementation: https://github.com/orasanen/thetaOscillator
+
+**Sylber** — Cho et al. (2025)
+
+> Cho, C. J., Lee, N., Gupta, A., Agarwal, D., Chen, E., Black, A. W., & Anumanchipalli, G. K. (2025). "Sylber: Syllabic Embedding Representation of Speech from Raw Audio." *ICLR 2025*. https://arxiv.org/abs/2410.07168
+
+**VG-HuBERT MinCut** — Peng et al. (2023)
+
+> Peng, P., Shang, Z., Harwath, D., & others (2023). "Syllable Discovery and Cross-Lingual Generalization in a Visually Grounded, Self-Supervised Speech Model." *Interspeech 2023*. https://doi.org/10.21437/Interspeech.2023-1430
+>
+> Code: https://github.com/jasonppy/syllable-discovery
+
+**VG-HuBERT CLS Attention** — Peng & Harwath (2022)
+
+> Peng, P., & Harwath, D. (2022). "Self-Supervised Representation Learning for Speech Using Visual Grounding and Masked Language Modeling." *Interspeech 2022*. https://doi.org/10.21437/Interspeech.2022-10631
+>
+> Code: https://github.com/jasonppy/word-discovery
 
 ---
 
