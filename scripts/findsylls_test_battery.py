@@ -53,14 +53,20 @@ from findsylls.embedding.storage import load_embeddings_npz, save_embeddings_npz
 from findsylls.features import get_extractor
 from findsylls.pipeline.orchestrator import FindSyllsOrchestrator
 from findsylls.segmentation import get_segmenter, list_segmenter_aliases, list_segmenters
+from findsylls.segmentation.presets import (
+    SBSPeakdetectSegmenter,
+    ThetaOscillatorSegmenter,
+    list_segmenter_presets,
+)
 
 EVAL_TIERS = {"phone": 2, "syllable": 1, "word": 0}
 DEFAULT_NEURAL_FEATURES = ["hubert", "sylber", "vghubert"]
 DEFAULT_PSEUDO_ENVELOPES = ["cls_attention", "greedy_cosine", "mincut"]
 DEFAULT_CORPUS_DIR = REPO_ROOT / "data" / "timit1"
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "test_output_cli"
-BATTERY_ORDER = [1, 2, 3, 4, 5]
+BATTERY_ORDER = [0, 1, 2, 3, 4, 5]
 BATTERY_LABELS = {
+    0: "envelope_presets",
     1: "compatibility",
     2: "embedding",
     3: "discovery",
@@ -1131,6 +1137,99 @@ def run_orchestrator_smoke_test(
     return orchestrator_df, orchestrator_eval_df
 
 
+def run_envelope_preset_battery(
+    printer: SectionPrinter,
+    wav_files_subset: Sequence[Path],
+) -> pd.DataFrame:
+    """Battery 0: run envelope-based preset segmenters on the corpus subset.
+
+    Exercises SBSPeakdetectSegmenter and ThetaOscillatorSegmenter end-to-end
+    on real TIMIT audio — verifying output contract, syllable counts, and that
+    the segments are accepted by the MFCC+mean-pooling embedding path.
+    Requires no GPU.
+    """
+    import soundfile as sf
+    from findsylls.audio.utils import load_audio
+    from findsylls.features import MFCCExtractor
+    from findsylls.embedding.poolers.mean import MeanPooler
+
+    printer.title("BATTERY 0: Envelope Preset Segmenters")
+
+    presets = [
+        ("sbs_peakdetect", SBSPeakdetectSegmenter()),
+        ("theta_oscillator", ThetaOscillatorSegmenter()),
+    ]
+
+    # Registry smoke-check
+    registered = list_segmenter_presets()
+    for name, _ in presets:
+        if name in registered:
+            printer.ok(f"list_segmenter_presets() contains '{name}'")
+        else:
+            printer.fail(f"'{name}' missing from list_segmenter_presets()")
+
+    mfcc = MFCCExtractor()
+    pooler = MeanPooler()
+
+    rows: List[Dict[str, Any]] = []
+    for preset_name, segmenter in presets:
+        printer.subtitle(f"Preset: {preset_name}")
+        n_ok = 0
+        n_fail = 0
+        total_segs = 0
+
+        for wav_path in wav_files_subset:
+            try:
+                audio, sr = load_audio(str(wav_path))
+                segments = segmenter.segment(audio=audio, sr=sr)
+
+                # Output contract check
+                for start, peak, end in segments:
+                    assert start >= 0 and start <= peak <= end, (
+                        f"Invalid segment ({start}, {peak}, {end}) in {wav_path}"
+                    )
+
+                # Embedding pipeline integration check
+                if len(segments) > 0:
+                    features = mfcc.extract(audio, sr)
+                    embeddings = pooler.pool(features, segments, fps=mfcc.frame_rate)
+                    assert embeddings.shape[0] == len(segments), (
+                        f"Embedding row count mismatch: {embeddings.shape[0]} != {len(segments)}"
+                    )
+
+                total_segs += len(segments)
+                n_ok += 1
+                rows.append({
+                    "preset": preset_name,
+                    "file": Path(wav_path).name,
+                    "n_segments": len(segments),
+                    "status": "ok",
+                })
+            except Exception as exc:
+                n_fail += 1
+                rows.append({
+                    "preset": preset_name,
+                    "file": Path(wav_path).name,
+                    "n_segments": 0,
+                    "status": f"error: {exc}",
+                })
+
+        avg_segs = total_segs / max(n_ok, 1)
+        if n_fail == 0:
+            printer.ok(
+                f"{n_ok}/{len(wav_files_subset)} files OK  |  "
+                f"avg {avg_segs:.1f} syllables/file"
+            )
+        else:
+            printer.fail(
+                f"{n_fail}/{len(wav_files_subset)} files FAILED  |  "
+                f"{n_ok} OK  |  avg {avg_segs:.1f} syllables/file"
+            )
+
+    df = pd.DataFrame(rows)
+    return df
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     printer = SectionPrinter()
@@ -1252,6 +1351,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     selected_batteries = set(args.batteries)
 
+    envelope_preset_df = pd.DataFrame()
+    if 0 in selected_batteries:
+        envelope_preset_df = run_envelope_preset_battery(printer, wav_files_subset)
+        envelope_preset_df.to_csv(output_root / "envelope_preset_results.csv", index=False)
+    else:
+        printer.title("BATTERY 0: Envelope Preset Segmenters")
+        printer.note("Skipped by battery selection")
+
     if 1 in selected_batteries:
         run_compatibility_battery(printer, feature_extractors)
     else:
@@ -1328,6 +1435,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         printer.note("Skipped by request")
 
     printer.title("FINAL SUMMARY")
+    printer.note(f"Envelope preset rows: {len(envelope_preset_df)}")
     printer.note(f"Embeddings rows: {len(embedding_df)}")
     printer.note(f"Discovery rows: {len(discovery_df)}")
     printer.note(f"Module comparison rows: {len(module_run_df)}")
