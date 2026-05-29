@@ -171,17 +171,42 @@ def test_theta_precomputed_envelope_matches_audio_path(sample_audio):
 # Parameter behavior on real audio
 # ---------------------------------------------------------------------------
 
-def test_max_syllable_dur_caps_all_spans(sample_audio):
-    """Every span returned with max_syllable_dur=0.15 must be ≤ 0.15 s."""
+def test_max_syllable_dur_caps_internal_spans(sample_audio):
+    """Internal (non-boundary) spans must be ≤ max_syllable_dur.
+
+    Onset/offset boundary segments are exempt from the cap because they are
+    bounded by intentional utterance endpoints and always contain a confirmed
+    peak — they are not the spurious long spans the cap targets.
+    """
     from findsylls.segmentation.peakdetect_segmenter import PeakdetectSegmenter
     from findsylls.envelope.sbs import SBSEnvelope
     audio, sr = sample_audio
     cap = 0.15
-    segs = PeakdetectSegmenter(SBSEnvelope(), max_syllable_dur=cap).segment(audio=audio, sr=sr)
+    # add_utterance_boundaries=False: no onset/offset boundary segments, so all
+    # segments are internal and must respect the cap.
+    segs = PeakdetectSegmenter(
+        SBSEnvelope(), max_syllable_dur=cap, add_utterance_boundaries=False
+    ).segment(audio=audio, sr=sr)
     for start, _, end in segs:
         assert (end - start) <= cap + 1e-6, (
             f"Span {end - start:.4f}s exceeds max_syllable_dur={cap}"
         )
+
+
+def test_max_syllable_dur_does_not_drop_boundary_segments(sample_audio):
+    """Onset/offset boundary segments survive even when they exceed max_syllable_dur."""
+    from findsylls.segmentation.peakdetect_segmenter import PeakdetectSegmenter
+    from findsylls.envelope.sbs import SBSEnvelope
+    audio, sr = sample_audio
+    cap = 0.15
+    segs_with_boundaries = PeakdetectSegmenter(
+        SBSEnvelope(), max_syllable_dur=cap, add_utterance_boundaries=True
+    ).segment(audio=audio, sr=sr)
+    segs_no_boundaries = PeakdetectSegmenter(
+        SBSEnvelope(), max_syllable_dur=cap, add_utterance_boundaries=False
+    ).segment(audio=audio, sr=sr)
+    # Boundary insertion must produce at least as many segments as without it.
+    assert len(segs_with_boundaries) >= len(segs_no_boundaries)
 
 
 def test_max_syllable_dur_reduces_or_preserves_count(sample_audio):

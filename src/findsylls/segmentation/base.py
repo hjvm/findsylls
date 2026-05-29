@@ -1,28 +1,31 @@
 """
 Base classes for syllable segmentation methods.
 
-This module defines the abstract base classes for two types of segmentation approaches:
+Two concrete segmenter families:
 
-1. EnvelopeBasedSegmenter: Classical signal processing methods (Methods 1-7)
-   - Take raw audio as input
-   - Compute method-specific envelope/feature curve internally
-   - Apply peak/valley detection or similar algorithms
-   - Signal processing approach (fast, no GPU needed)
+1. EnvelopeBasedSegmenter — classical signal processing
+   Accepts either raw audio (computes its own envelope) or a pre-computed
+   (envelope, times) pair for the functional / backward-compat path.
 
-2. End2EndSegmenter: End-to-end neural methods (Methods 8-11)
-   - Take raw audio as input
-   - Process through learned representations (typically transformers)
-   - Produce syllable boundaries end-to-end
-   - Neural network approach (GPU-accelerated, pre-trained models)
+2. End2EndSegmenter — neural end-to-end methods
+   Accepts raw audio only; runs a learned representation internally.
 
-Both types work from raw audio but differ in their approach: classical methods
-compute interpretable envelopes as an intermediate step, while end-to-end models
-learn the entire segmentation pipeline from data.
+Both families share the SAD-chunking logic and add_utterance_boundaries flag
+provided by BaseSegmenter.  For envelope-based segmenters (PeakdetectSegmenter),
+the flag passes add_boundary_valleys to segment_peakdetect so the in-algorithm
+valley detection covers the full speech region.  For neural end-to-end segmenters
+the flag is stored but is a documented no-op — those algorithms already produce
+contiguous segmentation of the full chunk.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, List, Tuple, Optional, Protocol
+from typing import Any, List, Optional, Tuple, TYPE_CHECKING
 import numpy as np
+
+from ..vad import resolve_sad
+
+if TYPE_CHECKING:
+    from ..vad.base import BaseSAD
 
 
 def extract_frame_features(
@@ -33,244 +36,171 @@ def extract_frame_features(
     """
     Extract frame-level features from a segmentation feature extractor.
 
-    Contract:
-    1. Preferred: extractor object exposes `extract(audio, sr)`.
-    2. Alternative: extractor is a callable `(audio, sr) -> features`.
-
-    This capability-based dispatch avoids fragile class-identity checks that can
-    break under module reloads in notebook workflows.
+    Dispatch order:
+    1. extractor.extract(audio, sr)
+    2. extractor(audio, sr)
     """
     extract_fn = getattr(feature_extractor, "extract", None)
     if callable(extract_fn):
         return extract_fn(audio, sr)
-
     if callable(feature_extractor):
         return feature_extractor(audio, sr)
-
     raise TypeError(
         "feature_extractor must provide an extract(audio, sr) method "
         "or be callable as (audio, sr)."
     )
 
 
-class SegmenterProtocol(Protocol):
-    """
-    Protocol for duck-typing segmenter objects.
-    
-    Any object with a segment() method returning List[Tuple[float, float, float]]
-    can be used as a segmenter.
-    """
-    
-    def segment(self, **kwargs) -> List[Tuple[float, float, float]]:
-        """Segment audio into syllables."""
-        ...
-
-
 class BaseSegmenter(ABC):
     """
-    Abstract base class for all segmentation methods.
-    
-    All segmenters must:
-    - Implement segment() method
-    - Return list of (start, nucleus, end) tuples in seconds
-    - Accept raw audio as input
+    Abstract base for all segmenters.
+
+    Subclasses implement _segment(audio, sr).  The public segment(audio, sr)
+    adds optional SAD chunking on top, running _segment per speech region and
+    reassembling with global timestamps.
+
+    Args:
+        sample_rate: Target sample rate.
+        sad: Optional SAD backend (BaseSAD).  When provided, segment() runs the
+             core algorithm only on detected speech regions and reassembles with
+             global timestamps.
+        add_utterance_boundaries: Insert boundary markers at the onset and offset
+             of each speech region so the algorithm can produce segments that cover
+             the full region (default: True).  For envelope-based segmenters this
+             triggers in-algorithm valley insertion.  For neural segmenters it is
+             stored but has no effect (those algorithms already cover the full chunk).
     """
-    
-    def __init__(self, sample_rate: int = 16000):
-        """
-        Initialize segmenter.
-        
-        Args:
-            sample_rate: Target sample rate for audio processing
-        """
+
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
+    ):
         self.sample_rate = sample_rate
-    
+        self.sad = resolve_sad(sad)
+        self.add_utterance_boundaries = add_utterance_boundaries
+
     @abstractmethod
-    def segment(self, **kwargs) -> List[Tuple[float, float, float]]:
+    def _segment(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float, float]]:
+        """Core segmentation logic on a single audio chunk. No SAD."""
+        pass
+
+    def segment(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float, float]]:
         """
         Segment audio into syllables.
-        
-        Returns:
-            List of (start, nucleus, end) tuples in seconds
-            - start: syllable onset time
-            - nucleus: approximate syllable nucleus/peak time
-            - end: syllable offset time
+
+        When sad is set, runs _segment per speech region and merges with global
+        timestamps.
         """
-        pass
-    
+        if self.sad is not None:
+            regions = self.sad.get_speech_regions(audio, sr)
+        else:
+            regions = [(0.0, len(audio) / sr)]
+
+        out: List[Tuple[float, float, float]] = []
+        for start_s, end_s in regions:
+            chunk = audio[int(start_s * sr): int(end_s * sr)]
+            if len(chunk) == 0:
+                continue
+            segs = self._segment(chunk, sr)
+            out.extend((s + start_s, p + start_s, e + start_s) for s, p, e in segs)
+        return out
+
     def _validate_output(self, segments: List[Tuple[float, float, float]]) -> None:
-        """
-        Validate output format.
-        
-        Args:
-            segments: List of (start, nucleus, end) tuples
-            
-        Raises:
-            AssertionError: If segments are invalid
-        """
         for i, (start, nucleus, end) in enumerate(segments):
-            assert start <= nucleus <= end, \
+            assert start <= nucleus <= end, (
                 f"Invalid segment {i}: start={start}, nucleus={nucleus}, end={end}"
+            )
             assert start >= 0, f"Negative start time in segment {i}: {start}"
-    
+
     def cite(self) -> None:
-        """Print the reference for this segmenter's source paper, if available."""
+        """Print the citation for this segmenter's source paper."""
         ref = getattr(self.__class__, "REFERENCE", None)
         if ref:
             print(ref)
         else:
             print(f"{self.__class__.__name__} has no associated paper reference.")
 
-    def __call__(self, **kwargs) -> List[Tuple[float, float, float]]:
-        """Allow using segmenter as callable."""
-        return self.segment(**kwargs)
+    def __call__(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float, float]]:
+        return self.segment(audio, sr)
 
 
 class EnvelopeBasedSegmenter(BaseSegmenter):
     """
-    Base class for envelope-based segmentation methods (Methods 1-7).
-    
-    These are classical signal processing methods that:
-    1. Take raw audio as input
-    2. Compute a method-specific envelope/feature curve internally
-    3. Apply peak/valley detection or similar algorithms
-    4. Return syllable boundaries
-    
-    The envelope computation and segmentation are typically separate steps,
-    making these methods interpretable and tuneable.
-    
-    Examples:
-        - Peaks and valleys (Räsänen et al. 2018)
-        - Theta oscillator (Räsänen et al. 2018)
-        - Mermelstein (1975)
-        - VSeg (Gammatone filterbank)
-        - TCSSC (time-correlated spectral subband centroids)
+    Base for envelope-based segmenters.
+
+    Adds a secondary entry point: segment(envelope=..., times=...) which bypasses
+    SAD chunking and calls _segment_from_envelope directly.
+
+    Subclasses must implement both _segment(audio, sr) and
+    _segment_from_envelope(envelope, times).
     """
-    
+
     @abstractmethod
-    def segment(
-        self, 
+    def _segment(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float, float]]:
+        pass
+
+    @abstractmethod
+    def _segment_from_envelope(
+        self, envelope: np.ndarray, times: np.ndarray
+    ) -> List[Tuple[float, float, float]]:
+        pass
+
+    def segment(  # type: ignore[override]
+        self,
         audio: Optional[np.ndarray] = None,
         sr: Optional[int] = None,
         envelope: Optional[np.ndarray] = None,
         times: Optional[np.ndarray] = None,
-        **kwargs
+        **kwargs,
     ) -> List[Tuple[float, float, float]]:
         """
-        Segment from raw audio or pre-computed envelope.
-        
-        Args:
-            audio: Raw audio waveform (if envelope not provided)
-            sr: Sample rate (if audio provided)
-            envelope: Pre-computed envelope (optional, for backward compatibility)
-            times: Time array for envelope (optional, for backward compatibility)
-            **kwargs: Method-specific parameters
-        
-        Returns:
-            List of (start, nucleus, end) tuples in seconds
-        
-        Note: Methods compute their own envelopes internally when working from audio.
-        The envelope/times parameters are for backward compatibility with existing code.
+        Two entry points:
+
+        1. segment(audio, sr) — goes through SAD chunking.
+        2. segment(envelope=env, times=t) — bypasses SAD; calls _segment_from_envelope
+           directly on the pre-computed envelope.
         """
-        pass
+        if envelope is not None:
+            if times is None:
+                raise ValueError("Must provide times when using pre-computed envelope")
+            return self._segment_from_envelope(np.asarray(envelope), np.asarray(times))
+
+        if audio is None or sr is None:
+            raise ValueError("Must provide either (audio, sr) or (envelope, times)")
+        return super().segment(audio, sr)
 
 
 class End2EndSegmenter(BaseSegmenter):
     """
-    Base class for end-to-end neural segmentation methods (Methods 8-11).
-    
-    These are neural network models that:
-    1. Take raw audio as input
-    2. Process through learned representations (typically transformer-based)
-    3. Produce syllable boundaries end-to-end
-    4. Often include pre-trained weights
-    
-    Unlike envelope-based methods, these learn the entire segmentation
-    pipeline from data, making them more powerful but less interpretable.
-    
-    Examples:
-        - Sylber (self-supervised syllabic distillation)
-        - VG-HuBERT + MinCut (visually-grounded representations)
-        - SD-HuBERT (self-distillation)
-        - biLSTM (supervised learning)
+    Base for neural end-to-end segmenters.
+
+    Args:
+        sample_rate: Target sample rate.
+        device: Torch device string (default: 'cpu').
+        cache: Whether to cache the loaded model (default: True).
+        sad: Optional SAD backend. Use sad='energy' or sad='silero' to restrict
+             segmentation to detected speech regions.
+        add_utterance_boundaries: Stored for API consistency; no-op for neural
+             segmenters because the algorithms already cover the full chunk
+             (default: True).
     """
-    
+
     def __init__(
-        self, 
+        self,
         sample_rate: int = 16000,
         device: str = 'cpu',
-        cache: bool = True
+        cache: bool = True,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
     ):
-        """
-        Initialize end-to-end segmenter.
-        
-        Args:
-            sample_rate: Target sample rate for audio processing
-            device: Device for neural network ('cpu', 'cuda', 'mps')
-            cache: Whether to cache model after first load
-        """
-        super().__init__(sample_rate)
+        super().__init__(sample_rate=sample_rate, sad=sad,
+                         add_utterance_boundaries=add_utterance_boundaries)
         self.device = device
         self.cache = cache
-        self._model = None  # Lazy loading
-    
+        self._model = None
+
     @abstractmethod
-    def segment(
-        self, 
-        audio: np.ndarray, 
-        sr: int = 16000,
-        **kwargs
-    ) -> List[Tuple[float, float, float]]:
-        """
-        Segment from raw audio using end-to-end neural model.
-        
-        Args:
-            audio: Raw audio waveform
-            sr: Sample rate
-            **kwargs: Method-specific parameters
-        
-        Returns:
-            List of (start, nucleus, end) tuples in seconds
-        """
+    def _segment(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float, float]]:
         pass
-
-
-# =============================================================================
-# Abstract Base Classes for Phase 5 Modular Components
-# =============================================================================
-
-# Note: FeatureExtractor has been moved to findsylls.features.base
-# Import it from there: from findsylls.features import FeatureExtractor
-
-
-
-    
-    def _lazy_load_model(self):
-        """
-        Lazy load model on first use.
-        
-        Subclasses should override this to load their specific model.
-        Should set self._model to the loaded model.
-        """
-        raise NotImplementedError("Subclass must implement _lazy_load_model()")
-    
-    def _get_device(self) -> str:
-        """
-        Get appropriate device for model.
-        
-        Returns:
-            Device string ('cpu', 'cuda', or 'mps')
-        """
-        if self.device == 'cuda':
-            try:
-                import torch
-                return 'cuda' if torch.cuda.is_available() else 'cpu'
-            except ImportError:
-                return 'cpu'
-        elif self.device == 'mps':
-            try:
-                import torch
-                return 'mps' if torch.backends.mps.is_available() else 'cpu'
-            except ImportError:
-                return 'cpu'
-        return 'cpu'

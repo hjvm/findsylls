@@ -12,10 +12,13 @@ by the MinCut pseudo-envelope to derive pre-segmentation boundary traces.
 import warnings
 import numpy as np
 import torch
-from typing import List, Tuple, Union, Callable, Optional
+from typing import List, Tuple, Union, Callable, Optional, TYPE_CHECKING
 
 from .base import End2EndSegmenter, extract_frame_features
 from ..features import FeatureExtractor
+
+if TYPE_CHECKING:
+    from ..vad.base import BaseSAD
 
 
 MINCUT_THRESHOLD = 1.0 / 0.10 / 50.0
@@ -555,8 +558,12 @@ class MinCutSegmenter(End2EndSegmenter):
         use_optimized: bool = True,
         max_hop: int = 50,
         merge_threshold: Optional[float] = None,
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
     ):
-        super().__init__()
+        super().__init__(sample_rate=sample_rate, sad=sad,
+                         add_utterance_boundaries=add_utterance_boundaries)
         self.feature_extractor = feature_extractor
         self.threshold = threshold
         self.s = s
@@ -594,7 +601,7 @@ class MinCutSegmenter(End2EndSegmenter):
         else:
             self.frame_rate = 50.0  # Default assumption
     
-    def segment(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float, float]]:
+    def _segment(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float, float]]:
         """Segment audio using MinCut on extracted features."""
         features = extract_frame_features(self.feature_extractor, audio, sr)
         n = int(features.shape[0])

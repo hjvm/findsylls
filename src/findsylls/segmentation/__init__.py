@@ -9,7 +9,6 @@ from .base import (
     BaseSegmenter,
     EnvelopeBasedSegmenter,
     End2EndSegmenter,
-    SegmenterProtocol,
 )
 from .peakdetect_segmenter import (
     segment_peakdetect,
@@ -54,7 +53,6 @@ __all__ = [
     "BaseSegmenter",
     "EnvelopeBasedSegmenter",
     "End2EndSegmenter",
-    "SegmenterProtocol",
     # Envelope-based (Phase 5)
     "PeakdetectSegmenter",
     # Feature-based (Phase 5)

@@ -27,6 +27,7 @@ from .pipeline import (
 )
 from .envelope import get_amplitude_envelope
 from .segmentation import list_segmenters, list_segmenter_aliases
+from .vad import BaseSAD, EnergyVAD, SileroVAD, resolve_sad
 from .presets import list_presets, get_preset, resolve_preset
 from .evaluation import (
     evaluate_segmentation,
@@ -54,6 +55,10 @@ __all__ = [
     "get_amplitude_envelope",
     "list_segmenters",
     "list_segmenter_aliases",
+    "BaseSAD",
+    "EnergyVAD",
+    "SileroVAD",
+    "resolve_sad",
     "list_presets",
     "get_preset",
     "resolve_preset",
@@ -81,4 +86,4 @@ __all__ = [
     "load_discovery_pipeline",
 ]
 
-__version__ = "3.0.2"
+__version__ = "3.1.0"

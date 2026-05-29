@@ -2,8 +2,9 @@
 Preset segmenter configurations from published papers and reference baselines.
 
 These classes provide pre-configured segmenters that replicate the exact
-configurations reported in the original papers. Each class composes a
-feature extractor with an algorithm using the paper's hyperparameters.
+configurations reported in the original papers. Each class IS-A algorithm class
+configured with paper-canonical hyperparameters. SAD parameters from the parent
+classes are available.
 
 For flexibility and custom configurations, use the generic wrappers:
 - MinCutSegmenter(feature_extractor, **params)
@@ -18,18 +19,19 @@ Available presets:
 - VGHubertCLSSegmenter: VG-HuBERT with CLS attention (Peng et al. 2022)
 """
 
-from typing import List, Tuple, Optional
-import numpy as np
+from typing import Optional, TYPE_CHECKING
 
-from .base import End2EndSegmenter, EnvelopeBasedSegmenter
 from .cls_attention import CLSAttentionSegmenter
 from .greedy_cosine import GreedyCosineSegmenter
 from .mincut import MinCutSegmenter
 from .peakdetect_segmenter import PeakdetectSegmenter
 from ..features import SylberFeatureExtractor, VGHuBERTFeatureExtractor
 
+if TYPE_CHECKING:
+    from ..vad.base import BaseSAD
 
-class SBSPeakdetectSegmenter(EnvelopeBasedSegmenter):
+
+class SBSPeakdetectSegmenter(PeakdetectSegmenter):
     """
     Spectral Band Subtraction envelope + peak detection (dissertation baseline).
 
@@ -38,14 +40,6 @@ class SBSPeakdetectSegmenter(EnvelopeBasedSegmenter):
                 Hamming-smoothed at 70 ms / 7 samples at 100 Hz frame rate)
     - Segmentation: Billauer valley-picking with max syllable duration cap (400 ms)
                     and shallow-valley filter (merge valleys shallower than 40% of local max)
-
-    This is equivalent to:
-        PeakdetectSegmenter(
-            SBSEnvelope(pivot_freq=3000, smoothing_window_samples=7),
-            delta=0.01,
-            max_syllable_dur=0.4,
-            amplitude_ratio_tol=0.4,
-        )
 
     Reference:
         Vázquez, H. J. (in preparation). University of Pennsylvania doctoral dissertation.
@@ -58,6 +52,11 @@ class SBSPeakdetectSegmenter(EnvelopeBasedSegmenter):
         max_syllable_dur: Maximum allowed syllable duration in seconds (default: 0.4)
         amplitude_ratio_tol: Shallow-valley merge threshold as fraction of local max
                              (default: 0.4 — merge valleys shallower than 40% of local peak)
+        sample_rate: Target sample rate (default: 16000)
+        sad: Optional SAD backend for speech-region chunking (default: None)
+        add_utterance_boundaries: Insert boundary valleys at region onset/offset so the
+                                  algorithm can produce segments covering the full speech
+                                  region (default: True)
 
     Example:
         >>> segmenter = SBSPeakdetectSegmenter()
@@ -80,51 +79,28 @@ class SBSPeakdetectSegmenter(EnvelopeBasedSegmenter):
         delta: float = 0.01,
         max_syllable_dur: float = 0.4,
         amplitude_ratio_tol: float = 0.4,
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
     ):
-        super().__init__()
         from ..envelope.sbs import SBSEnvelope
-        self._segmenter = PeakdetectSegmenter(
-            SBSEnvelope(
+        super().__init__(
+            envelope_computer=SBSEnvelope(
                 pivot_freq=pivot_freq,
                 smoothing_window_samples=smoothing_window_samples,
             ),
             delta=delta,
             max_syllable_dur=max_syllable_dur,
             amplitude_ratio_tol=amplitude_ratio_tol,
+            sample_rate=sample_rate,
+            sad=sad,
+            add_utterance_boundaries=add_utterance_boundaries,
         )
         self.pivot_freq = pivot_freq
         self.smoothing_window_samples = smoothing_window_samples
-        self.delta = delta
-        self.max_syllable_dur = max_syllable_dur
-        self.amplitude_ratio_tol = amplitude_ratio_tol
-
-    def segment(
-        self,
-        audio=None,
-        sr=None,
-        envelope=None,
-        times=None,
-        **kwargs,
-    ) -> List[Tuple[float, float, float]]:
-        """
-        Segment audio using SBS envelope + valley-picking.
-
-        Args:
-            audio: Raw audio waveform (mono)
-            sr: Sample rate
-            envelope: Pre-computed SBS envelope (skips envelope computation)
-            times: Time array for pre-computed envelope
-            **kwargs: Override delta, max_syllable_dur, amplitude_ratio_tol, etc.
-
-        Returns:
-            List of (start, nucleus, end) tuples in seconds
-        """
-        if envelope is not None and times is not None:
-            return self._segmenter.segment(envelope=envelope, times=times, **kwargs)
-        return self._segmenter.segment(audio=audio, sr=sr, **kwargs)
 
 
-class ThetaOscillatorSegmenter(EnvelopeBasedSegmenter):
+class ThetaOscillatorSegmenter(PeakdetectSegmenter):
     """
     Theta oscillator syllable segmentation (Räsänen, Doyle & Frank 2018).
 
@@ -134,9 +110,6 @@ class ThetaOscillatorSegmenter(EnvelopeBasedSegmenter):
     - Parameters: f=5 Hz, Q=0.5, N=8 (top-8 bands)
     - Segmentation: Billauer valley-picking with depth threshold delta=0.025,
                     lookahead=1 (sample-by-sample, matching MATLAB peakdet.m)
-
-    This is equivalent to:
-        PeakdetectSegmenter(ThetaEnvelope(f=5, Q=0.5, N=8), delta=0.025, lookahead=1)
 
     Known divergence from the original MATLAB implementation:
         The MATLAB code uses gammatone_c (a custom C gammatone filterbank) while
@@ -155,13 +128,16 @@ class ThetaOscillatorSegmenter(EnvelopeBasedSegmenter):
         Q: Q-factor / damping ratio (default: 0.5, paper default)
         N: Number of most-energetic bands to sum for sonority (default: 8, paper default)
         delta: Valley depth threshold for boundary detection (default: 0.025, paper default)
+        sample_rate: Target sample rate (default: 16000)
+        sad: Optional SAD backend for speech-region chunking (default: None)
+        add_utterance_boundaries: Insert boundary valleys at region onset/offset so the
+                                  algorithm can produce segments covering the full speech
+                                  region (default: True)
 
     Example:
         >>> segmenter = ThetaOscillatorSegmenter()
         >>> segments = segmenter.segment(audio, sr=16000)
-        >>> # Returns [(start, nucleus, end), ...]
         >>> segmenter.cite()
-        >>> # Prints full citation and MATLAB source URL
     """
 
     REFERENCE = (
@@ -178,46 +154,25 @@ class ThetaOscillatorSegmenter(EnvelopeBasedSegmenter):
         Q: float = 0.5,
         N: int = 8,
         delta: float = 0.025,
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
     ):
-        super().__init__()
         from ..envelope.theta import ThetaEnvelope
-        self._segmenter = PeakdetectSegmenter(
-            ThetaEnvelope(f=f, Q=Q, N=N),
+        super().__init__(
+            envelope_computer=ThetaEnvelope(f=f, Q=Q, N=N),
             delta=delta,
             lookahead=1,
+            sample_rate=sample_rate,
+            sad=sad,
+            add_utterance_boundaries=add_utterance_boundaries,
         )
         self.f = f
         self.Q = Q
         self.N = N
-        self.delta = delta
-
-    def segment(
-        self,
-        audio: Optional[np.ndarray] = None,
-        sr: Optional[int] = None,
-        envelope: Optional[np.ndarray] = None,
-        times: Optional[np.ndarray] = None,
-        **kwargs,
-    ) -> List[Tuple[float, float, float]]:
-        """
-        Segment audio using the theta oscillator envelope + valley-picking.
-
-        Args:
-            audio: Raw audio waveform (mono)
-            sr: Sample rate
-            envelope: Pre-computed sonority envelope (skips oscillator computation)
-            times: Time array for pre-computed envelope
-            **kwargs: Override delta, lookahead, min_syllable_dur
-
-        Returns:
-            List of (start, nucleus, end) tuples in seconds
-        """
-        if envelope is not None and times is not None:
-            return self._segmenter.segment(envelope=envelope, times=times, **kwargs)
-        return self._segmenter.segment(audio=audio, sr=sr, **kwargs)
 
 
-class SylberSegmenter(End2EndSegmenter):
+class SylberSegmenter(GreedyCosineSegmenter):
     """
     Sylber syllable segmentation (Cho et al. 2025).
 
@@ -225,9 +180,6 @@ class SylberSegmenter(End2EndSegmenter):
     - Feature extractor: Sylber's fine-tuned HuBERT (layer 9, 768-dim)
     - Algorithm: Greedy cosine similarity with boundary refinement
     - Hyperparameters: norm_threshold=2.6, merge_threshold=0.8
-
-    This is a convenience wrapper equivalent to:
-        GreedyCosineSegmenter(SylberFeatureExtractor(), norm_threshold=2.6, merge_threshold=0.8)
 
     Reference:
         Cho, C. J., Lee, N., Gupta, A., Agarwal, D., Chen, E., Black, A. W., &
@@ -239,11 +191,13 @@ class SylberSegmenter(End2EndSegmenter):
         merge_threshold: Cosine similarity threshold for merging (default: 0.8)
         device: Device for model ('cuda', 'cpu', or None for auto-detect)
         sample_rate: Target sample rate (default: 16000)
+        sad: Optional SAD backend for speech-region chunking (default: None)
+        add_utterance_boundaries: No-op for this segmenter — the greedy cosine
+                                  algorithm already covers the full chunk (default: True)
 
     Example:
         >>> segmenter = SylberSegmenter()
         >>> segments = segmenter.segment(audio, sr=16000)
-        >>> # Returns [(start, nucleus, end), ...]
         >>> segmenter.cite()
     """
 
@@ -253,51 +207,28 @@ class SylberSegmenter(End2EndSegmenter):
         '"Sylber: Syllabic Embedding Representation of Speech from Raw Audio." '
         "ICLR 2025. https://arxiv.org/abs/2410.07168"
     )
-    
+
     def __init__(
         self,
         norm_threshold: float = 2.6,
         merge_threshold: float = 0.8,
         device: Optional[str] = None,
-        sample_rate: int = 16000
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
     ):
-        super().__init__(sample_rate=sample_rate)
-        
-        # Create feature extractor
-        self.feature_extractor = SylberFeatureExtractor(device=device)
-        
-        # Create algorithm wrapper with paper defaults
-        self._segmenter = GreedyCosineSegmenter(
-            feature_extractor=self.feature_extractor,
+        super().__init__(
+            feature_extractor=SylberFeatureExtractor(device=device),
             norm_threshold=norm_threshold,
-            merge_threshold=merge_threshold
+            merge_threshold=merge_threshold,
+            sample_rate=sample_rate,
+            sad=sad,
+            add_utterance_boundaries=add_utterance_boundaries,
         )
-        
-        self.norm_threshold = norm_threshold
-        self.merge_threshold = merge_threshold
         self.device = device
-    
-    def segment(
-        self,
-        audio: np.ndarray,
-        sr: int = 16000,
-        **kwargs
-    ) -> List[Tuple[float, float, float]]:
-        """
-        Segment audio into syllables using Sylber method.
-        
-        Args:
-            audio: Audio waveform (mono)
-            sr: Sample rate
-            **kwargs: Override default parameters (norm_threshold, merge_threshold)
-        
-        Returns:
-            List of (start, nucleus, end) tuples in seconds
-        """
-        return self._segmenter.segment(audio, sr, **kwargs)
 
 
-class VGHubertMinCutSegmenter(End2EndSegmenter):
+class VGHubertMinCutSegmenter(MinCutSegmenter):
     """
     VG-HuBERT with MinCut segmentation (Peng et al. 2023).
 
@@ -310,20 +241,10 @@ class VGHubertMinCutSegmenter(End2EndSegmenter):
     Note: Uses use_reference=False (SSM path) to match the original paper, which
     predates SyllableLM's DP algorithm. The DP's delta/quantile parameters are
     calibrated for Data2Vec2 features and over-segment VGHuBERT features.
-    The merge_threshold=0.3 replicates the minCutMerge-0.3 configuration used in
-    the paper's main results (save_seg_feats_mincut.py). SyllableLM's DP does not
-    use this post-processing step.
 
     Algorithm note: defaults to use_optimized=False (the reference Cython min_cut
-    algorithm) for exact segment-count parity with the paper. min_cut_optimized
-    backtracks from frame N rather than N-1, which can shift the second-to-last
-    boundary by 1 frame and alter the final merge decision. Set use_optimized=True
+    algorithm) for exact segment-count parity with the paper. Set use_optimized=True
     for ~50x speedup with near-identical (but not bit-exact) boundaries.
-
-    This is equivalent to:
-        MinCutSegmenter(VGHuBERTFeatureExtractor(mode='syllable'),
-                        sec_per_syllable=0.20, use_reference=False,
-                        use_optimized=False, merge_threshold=0.3)
 
     Reference:
         Peng, P., et al. (2023). "Syllable Discovery and Cross-Lingual Generalization
@@ -339,17 +260,13 @@ class VGHubertMinCutSegmenter(End2EndSegmenter):
                        set True for ~50x speedup with near-identical results).
         device: Device for model ('cuda', 'cpu', or None for auto-detect)
         sample_rate: Target sample rate (default: 16000)
+        sad: Optional SAD backend for speech-region chunking (default: None)
+        add_utterance_boundaries: No-op for this segmenter — MinCut forces K
+                                  contiguous segments covering the full chunk (default: True)
 
     Example:
-        >>> # Syllable segmentation (auto layer=8, with merge)
         >>> segmenter = VGHubertMinCutSegmenter(mode='syllable')
         >>> segments = segmenter.segment(audio, sr=16000)
-        >>>
-        >>> # Without post-merge (plain MinCut)
-        >>> segmenter_plain = VGHubertMinCutSegmenter(merge_threshold=None)
-        >>>
-        >>> # Word segmentation (auto layer=9)
-        >>> word_segmenter = VGHubertMinCutSegmenter(mode='word', sec_per_syllable=0.4)
         >>> segmenter.cite()
     """
 
@@ -369,56 +286,27 @@ class VGHubertMinCutSegmenter(End2EndSegmenter):
         merge_threshold: Optional[float] = 0.3,
         use_optimized: bool = False,
         device: Optional[str] = None,
-        sample_rate: int = 16000
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
     ):
-        super().__init__(sample_rate=sample_rate)
-
-        # Create feature extractor (layer auto-selected from mode)
-        self.feature_extractor = VGHuBERTFeatureExtractor(
-            layer=layer,
-            mode=mode,
-            device=device
-        )
-
-        # Create MinCut wrapper using the SSM path (use_reference=False) to match
-        # Peng et al. 2023, which predates SyllableLM's DP. The DP's delta/quantile
-        # are calibrated for Data2Vec2 features and saturate on VGHuBERT features.
-        self._segmenter = MinCutSegmenter(
-            feature_extractor=self.feature_extractor,
+        feature_extractor = VGHuBERTFeatureExtractor(layer=layer, mode=mode, device=device)
+        super().__init__(
+            feature_extractor=feature_extractor,
             sec_per_syllable=sec_per_syllable,
             use_reference=False,
             use_optimized=use_optimized,
             merge_threshold=merge_threshold,
+            sample_rate=sample_rate,
+            sad=sad,
+            add_utterance_boundaries=add_utterance_boundaries,
         )
-        
-        self.layer = self.feature_extractor.layer
+        self.layer = feature_extractor.layer
         self.mode = mode
-        self.sec_per_syllable = sec_per_syllable
-        self.merge_threshold = merge_threshold
-        self.use_optimized = use_optimized
         self.device = device
 
-    def segment(
-        self,
-        audio: np.ndarray,
-        sr: int = 16000,
-        **kwargs
-    ) -> List[Tuple[float, float, float]]:
-        """
-        Segment audio using VG-HuBERT + MinCut.
 
-        Args:
-            audio: Audio waveform (mono)
-            sr: Sample rate
-            **kwargs: Override default parameters
-
-        Returns:
-            List of (start, nucleus, end) tuples in seconds
-        """
-        return self._segmenter.segment(audio, sr, **kwargs)
-
-
-class VGHubertCLSSegmenter(End2EndSegmenter):
+class VGHubertCLSSegmenter(CLSAttentionSegmenter):
     """
     VG-HuBERT with CLS attention segmentation (Peng & Harwath 2022).
 
@@ -440,20 +328,18 @@ class VGHubertCLSSegmenter(End2EndSegmenter):
         layer: VG-HuBERT layer (default: None = auto-select from mode)
         mode: Checkpoint and layer selection — 'word' (default, layer 9, word checkpoint)
               or 'syllable' (layer 8, syllable checkpoint).
-        quantile: Per-head importance threshold (default: 0.9, matching the reference
-                  save_seg_feats.py default of threshold=0.90 — keeps top 10% per head).
+        quantile: Per-head importance threshold (default: 0.9, matching the reference).
         min_distance: Optional gap tolerance in seconds for merging adjacent segments
-                      (default: 0.0 = disabled, matching the reference which has no merging).
+                      (default: 0.0 = disabled, matching the reference).
         device: Device for model ('cuda', 'cpu', or None for auto-detect)
         sample_rate: Target sample rate (default: 16000)
+        sad: Optional SAD backend for speech-region chunking (default: None)
+        add_utterance_boundaries: No-op for this segmenter — CLS attention already
+                                  marks salient frames across the full chunk (default: True)
 
     Example:
-        >>> # Canonical word-discovery CLS segmentation (default)
         >>> segmenter = VGHubertCLSSegmenter()
         >>> segments = segmenter.segment(audio, sr=16000)
-        >>>
-        >>> # Syllable-checkpoint variant (non-canonical)
-        >>> syl_segmenter = VGHubertCLSSegmenter(mode='syllable')
         >>> segmenter.cite()
     """
 
@@ -472,47 +358,23 @@ class VGHubertCLSSegmenter(End2EndSegmenter):
         quantile: float = 0.9,
         min_distance: float = 0.0,
         device: Optional[str] = None,
-        sample_rate: int = 16000
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
     ):
-        super().__init__(sample_rate=sample_rate)
-        self._segmenter = CLSAttentionSegmenter(
-            feature_extractor=VGHuBERTFeatureExtractor(
-                layer=layer,
-                mode=mode,
-                device=device,
-            ),
+        super().__init__(
+            feature_extractor=VGHuBERTFeatureExtractor(layer=layer, mode=mode, device=device),
             layer=layer,
             mode=mode,
             quantile=quantile,
             min_distance=min_distance,
             device=device,
             sample_rate=sample_rate,
+            sad=sad,
+            add_utterance_boundaries=add_utterance_boundaries,
         )
-
-        self.layer = self._segmenter.layer
         self.mode = mode
-        self.quantile = quantile
-        self.min_distance = min_distance
         self.device = device
-
-    def segment(
-        self,
-        audio: np.ndarray,
-        sr: int = 16000,
-        **kwargs
-    ) -> List[Tuple[float, float, float]]:
-        """
-        Segment audio using VG-HuBERT CLS attention.
-
-        Args:
-            audio: Audio waveform (mono)
-            sr: Sample rate
-            **kwargs: Override parameters (quantile, min_distance)
-
-        Returns:
-            List of (start, nucleus, end) tuples in seconds
-        """
-        return self._segmenter.segment(audio, sr, **kwargs)
 
 
 # ---------------------------------------------------------------------------

@@ -30,10 +30,13 @@ arXiv:2410.07168.
 """
 
 import numpy as np
-from typing import Optional, Tuple, List, Union, Callable
+from typing import Optional, Tuple, List, Union, Callable, TYPE_CHECKING
 
 from .base import End2EndSegmenter, extract_frame_features
 from ..features import FeatureExtractor
+
+if TYPE_CHECKING:
+    from ..vad.base import BaseSAD
 
 
 # =============================================================================
@@ -543,21 +546,24 @@ class GreedyCosineSegmenter(End2EndSegmenter):
         feature_extractor: Union[FeatureExtractor, Callable],
         norm_threshold: float = 2.6,
         merge_threshold: float = 0.8,
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
     ):
-        super().__init__()
+        super().__init__(sample_rate=sample_rate, sad=sad,
+                         add_utterance_boundaries=add_utterance_boundaries)
         self.feature_extractor = feature_extractor
         self.norm_threshold = norm_threshold
         self.merge_threshold = merge_threshold
-        
-        # Determine frame rate
+
         if isinstance(feature_extractor, FeatureExtractor):
             self.frame_rate = feature_extractor.frame_rate
         elif hasattr(feature_extractor, 'frame_rate'):
             self.frame_rate = feature_extractor.frame_rate
         else:
             self.frame_rate = 50.0
-    
-    def segment(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float, float]]:
+
+    def _segment(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float, float]]:
         """Segment audio using Greedy Cosine on extracted features."""
         # Extract features through capability-based contract.
         features = extract_frame_features(self.feature_extractor, audio, sr)

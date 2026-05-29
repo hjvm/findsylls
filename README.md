@@ -163,6 +163,62 @@ vgh_cls = VGHubertCLSSegmenter(mode="word")
 words = vgh_cls.segment(audio, sr=sr)
 ```
 
+#### Speech Activity Detection and utterance boundaries
+
+Real recordings often contain silence between utterances. Without SAD, peakdetect can
+place spurious boundaries in silent regions; neural segmenters waste computation on
+silence. Pass `sad=` to any segmenter to restrict segmentation to detected speech regions.
+
+```python
+from findsylls.segmentation.presets import ThetaOscillatorSegmenter, SylberSegmenter
+from findsylls.audio.utils import load_audio
+
+audio, sr = load_audio("recording_with_pauses.wav")
+
+# Energy-based VAD — fast, no model download
+theta = ThetaOscillatorSegmenter(sad="energy")
+syllables = theta.segment(audio, sr)
+
+# Silero VAD — more accurate on noisy audio (requires findsylls[end2end])
+sylber = SylberSegmenter(sad="silero")
+syllables = sylber.segment(audio, sr)
+```
+
+`sad="energy"` uses a simple energy threshold; `sad="silero"` uses a small neural VAD
+model. Both chunk the audio into speech regions, run the segmenter on each chunk
+independently, and reassemble the results with global timestamps.
+
+**`add_utterance_boundaries`** controls whether the segmenter inserts boundary markers
+at the onset and offset of each speech region. For envelope-based segmenters (SBS,
+Theta) this is done in-algorithm — a valley is injected at both edges before peak
+detection, so the algorithm can produce segments that cover the full speech region even
+when there is no natural acoustic valley near the edge. Default is `True` for all
+segmenters.
+
+```python
+# Without SAD but with boundaries: ensures the full audio is covered even when
+# the first or last peak has no natural valley on its outer side.
+theta = ThetaOscillatorSegmenter(sad=None, add_utterance_boundaries=True)
+
+# With SAD + boundaries (recommended for multi-utterance recordings):
+# each speech chunk gets boundary valleys, so no syllable is dropped at a
+# region edge due to a missing valley.
+theta = ThetaOscillatorSegmenter(sad="energy", add_utterance_boundaries=True)
+
+# Disable if you are passing pre-chunked single-utterance audio and want
+# strict valley-only boundaries.
+theta = ThetaOscillatorSegmenter(add_utterance_boundaries=False)
+```
+
+For neural segmenters (`SylberSegmenter`, `VGHubertMinCutSegmenter`,
+`VGHubertCLSSegmenter`) `add_utterance_boundaries` is accepted for API consistency
+but has no effect — those algorithms already produce contiguous segmentation of
+whatever chunk they receive.
+
+![SAD and boundary insertion comparison](docs/images/sad_boundary_comparison.png)
+
+*SBS (left) and Theta (right) on a Kono recording with 6 speech events separated by silence (~12.4 s total). **Top row:** no SAD, no boundaries — both methods miss entire utterances where no valley bridges the silence gap. **Middle row:** no SAD, boundaries enabled — adds coverage only at the very start and end of the full recording, not between utterances. **Bottom row:** SAD + boundaries (recommended) — each speech region is segmented independently with boundary valleys at its edges; all speech events are captured.*
+
 #### Generic dispatch
 
 ```python
@@ -518,7 +574,7 @@ findsylls evaluate "data/**/*.wav" "data/**/*.TextGrid" \
 `peakdetect` · `cls_attention` · `mincut` · `greedy_cosine`
 
 ### Preset segmenters (paper-replication classes)
-`ThetaOscillatorSegmenter` · `SylberSegmenter` · `VGHubertMinCutSegmenter` · `VGHubertCLSSegmenter`
+`SBSPeakdetectSegmenter` · `ThetaOscillatorSegmenter` · `SylberSegmenter` · `VGHubertMinCutSegmenter` · `VGHubertCLSSegmenter`
 
 ### Feature extractors
 `mfcc` · `melspectrogram` · `hubert` · `sylber` · `vghubert`

@@ -12,29 +12,32 @@ All other modules should use these wrappers.
 Functional API:
     from findsylls.envelope.theta import theta_oscillator_envelope
     from findsylls.segmentation.peakdetect_segmenter import segment_peakdetect
-    
+
     envelope, times = theta_oscillator_envelope(audio, sr)
     syllables = segment_peakdetect(envelope, times)
 
 Object-Oriented API (for mixing envelopes with algorithms):
     from findsylls.segmentation.peakdetect_segmenter import PeakdetectSegmenter
     from findsylls.segmentation.custom_segmenters import EnvelopeComputer
-    
+
     class HilbertEnvelope(EnvelopeComputer):
         def compute(self, audio, sr):
             from findsylls.envelope.dispatch import get_amplitude_envelope
             return get_amplitude_envelope(audio, sr, method='hilbert')
-    
+
     segmenter = PeakdetectSegmenter(HilbertEnvelope(), delta=0.02)
     segments = segmenter.segment(audio, sr)
 """
 
 import numpy as np
-from typing import List, Tuple, Union, Optional
+from typing import List, Tuple, Union, Optional, TYPE_CHECKING
 from findpeaks.peakdetect import peakdetect
 
 from .base import EnvelopeBasedSegmenter
 from ..envelope.base import EnvelopeComputer
+
+if TYPE_CHECKING:
+    from ..vad.base import BaseSAD
 
 
 def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> List[Tuple[float, float, float]]:
@@ -48,7 +51,6 @@ def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> Lis
             - delta: Minimum peak/valley height difference (default: 0.01)
             - min_syllable_dur: Minimum syllable duration in seconds (default: 0.05)
             - max_syllable_dur: Maximum syllable duration in seconds (default: None, no cap)
-            - onset: Time threshold for adding initial/final valleys (default: 0.05)
             - merge_valley_tol: Time tolerance for merging nearby valleys (default: 0.05)
             - amplitude_ratio_tol: Shallow-valley filter — valleys whose amplitude exceeds
                                    this fraction of the local peak maximum are merged.
@@ -81,7 +83,7 @@ def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> Lis
     delta = kwargs.get("delta", 0.01)
     min_syllable_dur = kwargs.get("min_syllable_dur", 0.05)
     max_syllable_dur = kwargs.get("max_syllable_dur", None)
-    onset = kwargs.get("onset", 0.05)
+    add_boundary_valleys = kwargs.get("add_boundary_valleys", False)
     merge_tol = kwargs.get("merge_valley_tol", 0.05)
     amplitude_ratio_tol = kwargs.get("amplitude_ratio_tol", None)
     min_amplitude_threshold = kwargs.get("min_amplitude_threshold", 0.0)
@@ -104,7 +106,9 @@ def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> Lis
     valleys_times = np.array([v[0] for v in raw_valleys])
     valleys_vals = np.array([v[1] for v in raw_valleys])
 
-    if peak_times.size == 0 or valleys_times.size == 0:
+    if peak_times.size == 0:
+        return []
+    if valleys_times.size == 0 and not add_boundary_valleys:
         return []
 
     # Shallow-valley filter: remove valleys that don't dip below
@@ -122,8 +126,17 @@ def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> Lis
         valleys_times = valleys_times[keep]
         valleys_vals = valleys_vals[keep]
 
-    if valleys_times.size == 0:
+    if valleys_times.size == 0 and not add_boundary_valleys:
         return []
+
+    # Boundary valley insertion — before merge so that any natural valley close to
+    # an endpoint is absorbed into the boundary via the merge step below.
+    # Inserting at times[0] and times[-1] unconditionally lets merge_valley_tol
+    # decide whether a nearby natural valley should replace the boundary position.
+    # Boundary-spanning segments are exempt from max_syllable_dur (see loop below).
+    if add_boundary_valleys:
+        valleys_times = np.concatenate(([times[0]], valleys_times, [times[-1]]))
+        valleys_vals = np.concatenate(([envelope[0]], valleys_vals, [envelope[-1]]))
 
     # Time-based merge: group consecutive close valleys, keep deepest.
     diffs = np.diff(valleys_times)
@@ -136,11 +149,6 @@ def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> Lis
         merged_valleys.append(valleys_times[best_idx])
     valleys = np.array(merged_valleys)
 
-    if valleys[0] > onset:
-        valleys = np.insert(valleys, 0, 0.0)
-    if valleys[-1] < times[-1] - onset:
-        valleys = np.append(valleys, times[-1])
-
     syllables = []
     for i in range(1, len(valleys)):
         left, right = valleys[i-1], valleys[i]
@@ -151,9 +159,14 @@ def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> Lis
         peak_amplitude = envelope[np.argmin(np.abs(times - best_peak))]
 
         dur = right - left
+        # Segments spanning the chunk endpoints are exempt from max_syllable_dur:
+        # that cap targets spurious long interior spans, not intentional SAD boundaries.
+        is_boundary_seg = add_boundary_valleys and (
+            left == times[0] or right == times[-1]
+        )
         if (dur >= min_syllable_dur
                 and peak_amplitude >= amplitude_cutoff
-                and (max_syllable_dur is None or dur <= max_syllable_dur)):
+                and (is_boundary_seg or max_syllable_dur is None or dur <= max_syllable_dur)):
             syllables.append((left, best_peak, right))
     return syllables
 
@@ -161,13 +174,13 @@ def segment_peakdetect(envelope: np.ndarray, times: np.ndarray, **kwargs) -> Lis
 class PeakdetectSegmenter(EnvelopeBasedSegmenter):
     """
     Apply Billauer's peak detection algorithm to any feature extraction method.
-    
+
     This segmenter separates feature extraction from segmentation algorithm, allowing
     you to mix-and-match:
     - Classical envelopes (SBS, Theta, Hilbert) + peak detection
     - Neural features (Sylber, VG-HuBERT) + peak detection
     - Any custom envelope + peak detection
-    
+
     Args:
         envelope_computer: Feature extractor - EnvelopeComputer instance or callable
                           that returns (envelope/features, times). Can be:
@@ -178,7 +191,6 @@ class PeakdetectSegmenter(EnvelopeBasedSegmenter):
         lookahead: Samples to look ahead for peak detection (auto-computed if None)
         min_syllable_dur: Minimum syllable duration in seconds (default: 0.05)
         max_syllable_dur: Maximum syllable duration in seconds (default: None, no cap)
-        onset: Time threshold for adding initial/final valleys (default: 0.05)
         merge_valley_tol: Time tolerance for merging nearby valleys (default: 0.05)
         amplitude_ratio_tol: Shallow-valley filter. Valleys whose amplitude exceeds this
                              fraction of the local peak maximum are merged (removed as
@@ -186,25 +198,23 @@ class PeakdetectSegmenter(EnvelopeBasedSegmenter):
                              local max. (default: None, disabled)
         min_amplitude_threshold: Minimum amplitude threshold as fraction of max envelope
                                  amplitude (default: 0.0). Filters peaks in silent regions.
-    
+        sample_rate: Target sample rate (default: 16000).
+        sad: Optional SAD backend for speech-region chunking (default: None).
+        add_utterance_boundaries: Insert boundary valleys at region onset/offset before
+                                  peak detection so the algorithm can produce segments
+                                  covering the full speech region (default: True).
+
     Examples:
         >>> # Classical envelope
         >>> from findsylls.envelope.theta import ThetaEnvelope
         >>> segmenter = PeakdetectSegmenter(ThetaEnvelope(f=5, Q=0.5), delta=0.02)
         >>> segments = segmenter.segment(audio=audio, sr=16000)
-        
+
         >>> # Or use pre-computed envelope
         >>> envelope, times = theta_envelope_function(audio, sr)
         >>> segments = segmenter.segment(envelope=envelope, times=times)
-        
-        >>> # Neural features as envelope (future extension)
-        >>> # class VGHubertFeatureExtractor(EnvelopeComputer):
-        >>> #     def compute(self, audio, sr):
-        >>> #         features = vg_hubert.extract(audio, sr)
-        >>> #         return features, times
-        >>> # segmenter = PeakdetectSegmenter(VGHubertFeatureExtractor())
     """
-    
+
     def __init__(
         self,
         envelope_computer: Optional[Union[EnvelopeComputer, callable]] = None,
@@ -212,103 +222,67 @@ class PeakdetectSegmenter(EnvelopeBasedSegmenter):
         lookahead: Optional[int] = None,
         min_syllable_dur: float = 0.05,
         max_syllable_dur: Optional[float] = None,
-        onset: float = 0.05,
         merge_valley_tol: float = 0.05,
         amplitude_ratio_tol: Optional[float] = None,
         min_amplitude_threshold: float = 0.0,
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
     ):
-        super().__init__()
+        super().__init__(sample_rate=sample_rate, sad=sad,
+                         add_utterance_boundaries=add_utterance_boundaries)
         self.envelope_computer = envelope_computer
         self.delta = delta
         self.lookahead = lookahead
         self.min_syllable_dur = min_syllable_dur
         self.max_syllable_dur = max_syllable_dur
-        self.onset = onset
         self.merge_valley_tol = merge_valley_tol
         self.amplitude_ratio_tol = amplitude_ratio_tol
         self.min_amplitude_threshold = min_amplitude_threshold
-    
-    def segment(
-        self,
-        audio: Optional[np.ndarray] = None,
-        sr: Optional[int] = None,
-        envelope: Optional[np.ndarray] = None,
-        times: Optional[np.ndarray] = None,
-        **kwargs
-    ) -> List[Tuple[float, float, float]]:
-        """
-        Segment audio using envelope + Billauer's peak detection.
-        
-        Supports two modes:
-        1. From raw audio: segment(audio=audio, sr=sr) 
-           - Computes envelope using self.envelope_computer
-        2. From pre-computed envelope: segment(envelope=env, times=times)
-           - Uses provided envelope directly
-        
-        Args:
-            audio: Raw audio waveform (required if envelope not provided)
-            sr: Sample rate (required if audio provided)
-            envelope: Pre-computed envelope (optional, for pre-processing)
-            times: Time array for envelope (required if envelope provided)
-            **kwargs: Override segmentation parameters (delta, min_syllable_dur, etc.)
-        
-        Returns:
-            List of (start, nucleus, end) tuples in seconds
-        """
-        # Mode 1: Compute envelope from audio
-        if envelope is None:
-            if audio is None or sr is None:
-                raise ValueError("Must provide either (audio, sr) or (envelope, times)")
-            if self.envelope_computer is None:
-                raise ValueError("Must provide envelope_computer or pre-computed envelope")
-            
-            # Compute envelope using configured computer
-            if hasattr(self.envelope_computer, 'compute'):
-                envelope, times = self.envelope_computer.compute(audio, sr)
-            else:
-                envelope, times = self.envelope_computer(audio, sr)
-        
-        # Mode 2: Use pre-computed envelope
-        else:
-            if times is None:
-                raise ValueError("Must provide times array when using pre-computed envelope")
 
-        envelope_arr = np.asarray(envelope)
-        if envelope_arr.ndim != 1:
+    def _segment(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float, float]]:
+        if self.envelope_computer is None:
+            raise ValueError("Must provide envelope_computer or use segment(envelope=..., times=...)")
+        if hasattr(self.envelope_computer, 'compute'):
+            envelope, times = self.envelope_computer.compute(audio, sr)
+        else:
+            envelope, times = self.envelope_computer(audio, sr)
+        return self._segment_from_envelope(np.asarray(envelope), np.asarray(times))
+
+    def _segment_from_envelope(
+        self, envelope: np.ndarray, times: np.ndarray
+    ) -> List[Tuple[float, float, float]]:
+        envelope = np.asarray(envelope)
+        times = np.asarray(times)
+
+        if envelope.ndim != 1:
             raise ValueError(
                 "PeakdetectSegmenter requires a 1-D envelope. "
-                f"Got shape {envelope_arr.shape}; use an explicit envelope method/pseudo-envelope first."
+                f"Got shape {envelope.shape}; use an explicit envelope method/pseudo-envelope first."
             )
-
-        times_arr = np.asarray(times)
-        if times_arr.ndim != 1:
+        if times.ndim != 1:
             raise ValueError(
-                f"PeakdetectSegmenter requires a 1-D times array; got shape {times_arr.shape}."
+                f"PeakdetectSegmenter requires a 1-D times array; got shape {times.shape}."
             )
-
-        if envelope_arr.shape[0] != times_arr.shape[0]:
+        if envelope.shape[0] != times.shape[0]:
             raise ValueError(
                 "PeakdetectSegmenter requires envelope and times arrays of equal length; "
-                f"got {envelope_arr.shape[0]} and {times_arr.shape[0]}."
+                f"got {envelope.shape[0]} and {times.shape[0]}."
             )
-        
-        # Build kwargs - use instance params unless overridden
+
         peak_kwargs = {
-            'delta': kwargs.get('delta', self.delta),
-            'min_syllable_dur': kwargs.get('min_syllable_dur', self.min_syllable_dur),
-            'max_syllable_dur': kwargs.get('max_syllable_dur', self.max_syllable_dur),
-            'onset': kwargs.get('onset', self.onset),
-            'merge_valley_tol': kwargs.get('merge_valley_tol', self.merge_valley_tol),
-            'amplitude_ratio_tol': kwargs.get('amplitude_ratio_tol', self.amplitude_ratio_tol),
-            'min_amplitude_threshold': kwargs.get('min_amplitude_threshold', self.min_amplitude_threshold),
+            'delta': self.delta,
+            'min_syllable_dur': self.min_syllable_dur,
+            'max_syllable_dur': self.max_syllable_dur,
+            'merge_valley_tol': self.merge_valley_tol,
+            'amplitude_ratio_tol': self.amplitude_ratio_tol,
+            'min_amplitude_threshold': self.min_amplitude_threshold,
         }
-        
-        # Only include lookahead if explicitly set
-        lookahead = kwargs.get('lookahead', self.lookahead)
-        if lookahead is not None:
-            peak_kwargs['lookahead'] = lookahead
-        
-        # Apply peak detection algorithm
+        if self.lookahead is not None:
+            peak_kwargs['lookahead'] = self.lookahead
+        if self.add_utterance_boundaries:
+            peak_kwargs['add_boundary_valleys'] = True
+
         return segment_peakdetect(envelope, times, **peak_kwargs)
 
 

@@ -19,10 +19,13 @@ Reference algorithm (save_seg_feats.py, Peng & Harwath 2022):
 """
 
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, TYPE_CHECKING
 
 from .base import End2EndSegmenter
 from ..features import FeatureExtractor, get_extractor
+
+if TYPE_CHECKING:
+    from ..vad.base import BaseSAD
 
 
 def compute_cls_attention_importance_masks(
@@ -197,8 +200,11 @@ class CLSAttentionSegmenter(End2EndSegmenter):
         min_distance: float = 0.0,
         device: Optional[str] = None,
         sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
     ):
-        super().__init__(sample_rate=sample_rate)
+        super().__init__(sample_rate=sample_rate, sad=sad,
+                         add_utterance_boundaries=add_utterance_boundaries)
         if feature_extractor is None:
             extractor_kwargs = dict(feature_kwargs or {})
 
@@ -218,18 +224,16 @@ class CLSAttentionSegmenter(End2EndSegmenter):
         self.quantile = quantile
         self.min_distance = min_distance
 
-    def segment(
+    def _segment(
         self,
         audio: np.ndarray,
-        sr: int = 16000,
-        **kwargs,
+        sr: int,
     ) -> List[Tuple[float, float, float]]:
         """
         Segment audio using CLS attention with canonical raw-matrix algorithm.
 
         Applies per-head quantile/union thresholding matching Peng & Harwath 2022
         (threshold=0.9 in the reference = keep the top 10% of frames per head).
-        Pass merge_valley_tol>0 to optionally merge segments separated by short gaps.
         """
         if not getattr(self.feature_extractor, 'supports_attention', False):
             raise RuntimeError(
@@ -237,13 +241,11 @@ class CLSAttentionSegmenter(End2EndSegmenter):
                 "attention extraction"
             )
 
-        attention_layer = kwargs.get('layer', self.layer)
-
         # Returns [n_heads, T+1, T+1] (with CLS) or [n_heads, T, T] (no CLS).
         _, raw_attention = self.feature_extractor.extract_with_attention(
             audio,
             sr,
-            layer=attention_layer,
+            layer=self.layer,
             return_raw=True,
         )
 
@@ -256,8 +258,8 @@ class CLSAttentionSegmenter(End2EndSegmenter):
         return segment_by_cls_attention_raw_matrix(
             attention=raw_attention,
             times=times,
-            quantile=kwargs.get('quantile', self.quantile),
-            merge_valley_tol=kwargs.get('merge_valley_tol', self.min_distance),
+            quantile=self.quantile,
+            merge_valley_tol=self.min_distance,
             has_cls_token=has_cls,
         )
 
