@@ -170,12 +170,20 @@ place spurious boundaries in silent regions; neural segmenters waste computation
 silence. Pass `sad=` to any segmenter to restrict segmentation to detected speech regions.
 
 ```python
-from findsylls.segmentation.presets import ThetaOscillatorSegmenter, SylberSegmenter
+from findsylls.segmentation.presets import (
+    SBSPeakdetectSegmenter,
+    ThetaOscillatorSegmenter,
+    SylberSegmenter,
+)
 from findsylls.audio.utils import load_audio
 
 audio, sr = load_audio("recording_with_pauses.wav")
 
-# Energy-based VAD — fast, no model download
+# SBS envelope + peak detection with energy VAD — fast, no model download
+sbs = SBSPeakdetectSegmenter(sad="energy")
+syllables = sbs.segment(audio, sr)
+
+# Theta oscillator with energy VAD
 theta = ThetaOscillatorSegmenter(sad="energy")
 syllables = theta.segment(audio, sr)
 
@@ -196,18 +204,18 @@ when there is no natural acoustic valley near the edge. Default is `True` for al
 segmenters.
 
 ```python
-# Without SAD but with boundaries: ensures the full audio is covered even when
-# the first or last peak has no natural valley on its outer side.
-theta = ThetaOscillatorSegmenter(sad=None, add_utterance_boundaries=True)
+# SAD off, boundaries on (default): covers the full single audio clip even
+# when the first or last peak has no natural valley on its outer side.
+sbs = SBSPeakdetectSegmenter(sad=None, add_utterance_boundaries=True)
 
-# With SAD + boundaries (recommended for multi-utterance recordings):
-# each speech chunk gets boundary valleys, so no syllable is dropped at a
-# region edge due to a missing valley.
-theta = ThetaOscillatorSegmenter(sad="energy", add_utterance_boundaries=True)
+# SAD + boundaries (recommended for multi-event recordings): each detected
+# speech region gets boundary valleys, so no syllable is dropped at a region
+# edge due to a missing valley.
+sbs = SBSPeakdetectSegmenter(sad="energy", add_utterance_boundaries=True)
 
-# Disable if you are passing pre-chunked single-utterance audio and want
-# strict valley-only boundaries.
-theta = ThetaOscillatorSegmenter(add_utterance_boundaries=False)
+# Disable boundaries if passing pre-chunked single-utterance audio and you
+# want strict valley-only boundaries with no edge injection.
+sbs = SBSPeakdetectSegmenter(add_utterance_boundaries=False)
 ```
 
 For neural segmenters (`SylberSegmenter`, `VGHubertMinCutSegmenter`,
