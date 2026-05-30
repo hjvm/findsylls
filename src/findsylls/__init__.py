@@ -86,4 +86,4 @@ __all__ = [
     "load_discovery_pipeline",
 ]
 
-__version__ = "3.1.0"
+__version__ = "3.1.1"

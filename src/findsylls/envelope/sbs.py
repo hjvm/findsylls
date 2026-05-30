@@ -18,7 +18,7 @@ def spectral_band_subtraction(waveform, sr, **kwargs):
     high_energy = np.sum(Sxx[pivot_bin:(nfft // 2), :], axis=0)
     diff_signal = np.clip(low_energy - high_energy, a_min=0, a_max=None)
     win = hamming(smoothing_window_samples)
-    padlen = 3 * (len(win) - 1)
+    padlen = 3 * len(win)  # matches scipy filtfilt's internal: 3 * max(len(b), len(a))
     if diff_signal.size <= padlen:
         k = win / np.sum(win) if np.sum(win) != 0 else win
         envelope = np.convolve(diff_signal, k, mode='same')
