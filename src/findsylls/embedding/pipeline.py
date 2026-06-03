@@ -30,6 +30,21 @@ def _normalize_name(value: Optional[str]) -> Optional[str]:
     return str(value).lower().replace('-', '_').strip()
 
 
+def _inject_sad(
+    segmentation_kwargs: Optional[Dict[str, Any]], sad: Optional[Any]
+) -> Optional[Dict[str, Any]]:
+    """Fold a first-class ``sad`` argument into ``segmentation_kwargs``.
+
+    An explicit ``segmentation_kwargs['sad']`` takes precedence. Returns the
+    original mapping unchanged when ``sad`` is None.
+    """
+    if sad is None:
+        return segmentation_kwargs
+    merged = {**(segmentation_kwargs or {})}
+    merged.setdefault("sad", sad)
+    return merged
+
+
 def _canonical_feature_name(value: Optional[str]) -> Optional[str]:
     """Normalize known feature aliases to canonical extractor names."""
     name = _normalize_name(value)
@@ -509,7 +524,8 @@ def embed_audio(
     segmentation_kwargs: Optional[Dict[str, Any]] = None,
     feature_kwargs: Optional[Dict[str, Any]] = None,
     pooling_kwargs: Optional[Dict[str, Any]] = None,
-    return_metadata: bool = True
+    return_metadata: bool = True,
+    sad: Optional[Any] = None,
 ) -> Tuple[np.ndarray, Optional[Dict[str, Any]]]:
     """
     Extract syllable embeddings from audio file.
@@ -572,7 +588,7 @@ def embed_audio(
         sr=sr,
         layer=layer,
         device=device,
-        segmentation_kwargs=segmentation_kwargs,
+        segmentation_kwargs=_inject_sad(segmentation_kwargs, sad),
         feature_kwargs=feature_kwargs,
         pooling_kwargs=pooling_kwargs,
         return_metadata=return_metadata,
@@ -717,7 +733,8 @@ def embed_corpus(
     pooling_kwargs: Optional[Dict[str, Any]] = None,
     n_jobs: int = 1,
     verbose: bool = True,
-    fail_on_error: bool = False
+    fail_on_error: bool = False,
+    sad: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
     """
     Process multiple audio files in parallel and extract syllable embeddings.
@@ -779,7 +796,7 @@ def embed_corpus(
         sr=sr,
         layer=layer,
         device=device,
-        segmentation_kwargs=segmentation_kwargs,
+        segmentation_kwargs=_inject_sad(segmentation_kwargs, sad),
         feature_kwargs=feature_kwargs,
         pooling_kwargs=pooling_kwargs,
         n_jobs=n_jobs,

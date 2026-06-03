@@ -10,7 +10,7 @@ Supports both envelope-based (classical) and end-to-end (neural) methods.
 """
 
 import pandas as pd
-from typing import Optional, Union, List, Tuple
+from typing import Optional, Union, List, Tuple, TYPE_CHECKING
 import numpy as np
 
 from ..audio.utils import load_audio, match_wavs_to_textgrids
@@ -19,13 +19,17 @@ from ..segmentation.base import EnvelopeBasedSegmenter, End2EndSegmenter
 from ..evaluation.evaluator import evaluate_segmentation
 from .results import flatten_results
 
+if TYPE_CHECKING:
+    from ..vad.base import BaseSAD
+
 
 def segment_audio(
     audio_file: str,
     samplerate: int = 16000,
     method: str = "peakdetect",
     segmentation_kwargs: Optional[dict] = None,
-    return_envelope: bool = True
+    return_envelope: bool = True,
+    sad: Optional[Union[str, "BaseSAD"]] = None,
 ) -> Tuple[List[Tuple[float, float, float]], Optional[np.ndarray], Optional[np.ndarray]]:
     """
     Segment audio file into syllables.
@@ -61,6 +65,7 @@ def segment_audio(
         method=method,
         segmentation_kwargs=segmentation_kwargs,
         return_envelope=return_envelope,
+        sad=sad,
     )
 
 
@@ -70,18 +75,26 @@ def segment_loaded_audio(
     method: str = "peakdetect",
     segmentation_kwargs: Optional[dict] = None,
     return_envelope: bool = True,
+    sad: Optional[Union[str, "BaseSAD"]] = None,
 ) -> Tuple[List[Tuple[float, float, float]], Optional[np.ndarray], Optional[np.ndarray]]:
     """Segment a pre-loaded audio array into syllables.
 
     Core of ``segment_audio`` operating on an in-memory ``(audio, sr)`` pair so
     callers that already hold the waveform (e.g. the embedding pipeline) do not
     reload it from disk.
+
+    ``sad`` is a first-class convenience for restricting segmentation to detected
+    speech regions: pass ``'energy'`` / ``'silero'`` or a ``BaseSAD`` instance. It
+    is injected into the segmenter constructor (an explicit ``segmentation_kwargs``
+    ``'sad'`` entry takes precedence).
     """
     if segmentation_kwargs is None:
         segmentation_kwargs = {}
 
     # Get segmenter
     segmenter_kwargs = {**segmentation_kwargs}
+    if sad is not None:
+        segmenter_kwargs.setdefault("sad", sad)
     if method == "peakdetect":
         envelope_method = segmenter_kwargs.get("envelope_method", "hilbert")
         segmenter_kwargs["envelope_method"] = envelope_method
@@ -125,7 +138,8 @@ def run_evaluation(
     tolerance: float = 0.05,
     method: str = "peakdetect",
     segmentation_kwargs: Optional[dict] = None,
-    tg_suffix_to_strip: Optional[str] = None
+    tg_suffix_to_strip: Optional[str] = None,
+    sad: Optional[Union[str, "BaseSAD"]] = None,
 ) -> pd.DataFrame:
     """
     Run batch evaluation on matched TextGrid and audio files.
@@ -168,7 +182,8 @@ def run_evaluation(
                 str(wav_file),  # Convert Path to string
                 method=method,
                 segmentation_kwargs=segmentation_kwargs,
-                return_envelope=False  # Don't need envelope for evaluation
+                return_envelope=False,  # Don't need envelope for evaluation
+                sad=sad,
             )
             
             # Extract peaks and spans

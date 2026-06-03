@@ -28,6 +28,11 @@ All notable changes to this project will be documented in this file.
   removed; `flatten_results`/`plot_segmentation` no longer reference it.
 
 ### Added
+- First-class `sad=` parameter on `segment_audio`, `run_evaluation`, `embed_audio`,
+  `embed_corpus`, and `FindSyllsOrchestrator.discover_corpus` (accepts `'energy'`,
+  `'silero'`, or a `BaseSAD` instance), restricting segmentation to detected speech
+  regions. Previously reachable only via `segmentation_kwargs={'sad': ...}`; an
+  explicit `segmentation_kwargs['sad']` still takes precedence.
 - `collapse_clusters(embeddings, labels, n_clusters)` in `discovery/collapse.py`:
   collapses K fine-grained cluster labels into n_clusters coarse labels via
   agglomerative clustering on per-cluster centroids. Returns `(new_labels,
