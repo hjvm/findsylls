@@ -40,6 +40,25 @@ _SEGMENTER_ALIASES: Dict[str, str] = {
 _SEGMENTER_CACHE: Dict[str, BaseSegmenter] = {}
 
 
+def _kwarg_key(value) -> str:
+    """Deterministic cache-key fragment for a get_segmenter kwarg value.
+
+    Value types (str/int/float/bool/None) and nested dict/list/tuple containers
+    use a content repr so equal configs share a cache entry reproducibly. Object
+    instances (feature extractors, SAD backends, envelope computers) key by
+    identity, so a reused instance hits the cache while distinct instances do not
+    collide.
+    """
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return repr(value)
+    if isinstance(value, dict):
+        items = sorted(value.items(), key=lambda kv: repr(kv[0]))
+        return "{" + ",".join(f"{k!r}:{_kwarg_key(v)}" for k, v in items) + "}"
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(_kwarg_key(v) for v in value) + "]"
+    return f"<{type(value).__name__}@{id(value)}>"
+
+
 def register_segmenter(name: str, segmenter_class: Type[BaseSegmenter]) -> None:
     """
     Register a segmentation method.
@@ -117,19 +136,14 @@ def get_segmenter(method: str, cache: bool = True, **kwargs) -> BaseSegmenter:
     if not cache:
         return segmenter_class(**kwargs)
     
-    # Create cache key from method + sorted kwargs
-    # This ensures same parameters = same cached instance
-    cache_key_parts = [method]
-    for k in sorted(kwargs.keys()):
-        v = kwargs[k]
-        # Handle unhashable types by converting to string
-        try:
-            cache_key_parts.append(f"{k}={hash(v)}")
-        except TypeError:
-            # Fallback for unhashable types (dicts, lists, etc.)
-            cache_key_parts.append(f"{k}={str(v)}")
-    
-    cache_key = "|".join(cache_key_parts)
+    # Create cache key from method + sorted kwargs. Value types use a
+    # deterministic content repr; object instances (extractors, SAD backends,
+    # envelope computers) key by identity so a *reused* instance hits the cache
+    # while distinct instances stay separate. The cache is per-process and is
+    # meant to be released at workflow boundaries (see clear_segmenter_cache).
+    cache_key = "|".join(
+        [method] + [f"{k}={_kwarg_key(kwargs[k])}" for k in sorted(kwargs.keys())]
+    )
     
     # Return cached instance if available
     if cache_key in _SEGMENTER_CACHE:
@@ -209,22 +223,31 @@ def _register_feature_methods() -> None:
 
 def clear_segmenter_cache():
     """
-    Clear the global segmenter cache.
-    
-    Useful for freeing memory or forcing model reloads.
-    In most cases, you don't need to call this - cached models
-    are automatically reused efficiently.
-    
+    Release and clear the global segmenter cache.
+
+    Calls ``.release()`` on each cached segmenter that provides one (freeing
+    neural model memory) before dropping references. The cache is per-process and
+    reuses model instances across files for efficiency; call this at workflow
+    boundaries (end of a corpus pass / batch stage) to bound its lifetime, per
+    the project's memory-safety policy.
+
     Example:
         >>> # Process many files with cached models
         >>> for file in files:
         ...     segmenter = get_segmenter('sylber', cache=True)
         ...     segments = segmenter.segment(audio, sr)
-        >>> 
-        >>> # Optionally clear cache when done
+        >>>
+        >>> # Release models when the workflow is done
         >>> clear_segmenter_cache()
     """
     global _SEGMENTER_CACHE
+    for segmenter in _SEGMENTER_CACHE.values():
+        release = getattr(segmenter, "release", None)
+        if callable(release):
+            try:
+                release()
+            except Exception:
+                pass
     _SEGMENTER_CACHE.clear()
 
 

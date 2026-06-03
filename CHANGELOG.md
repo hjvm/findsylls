@@ -39,7 +39,21 @@ All notable changes to this project will be documented in this file.
   centroids, centroid_map)` for test-time nearest-centroid assignment. Exported
   from `findsylls.discovery` and the top-level `findsylls` package.
 
+### Removed
+- `segmentation.dispatch.segment_envelope()` — unused backward-compat functional
+  API (no callers, not exported). Use `get_segmenter(...)` /
+  `EnvelopeBasedSegmenter.segment(envelope=, times=)`.
+
 ### Fixed
+- `clear_segmenter_cache()` now calls `.release()` on cached segmenters before
+  clearing (frees neural model memory), and is invoked at `embed_corpus` /
+  `embed_corpus_to_storage` workflow boundaries so the per-process segmenter
+  cache no longer outlives a corpus pass. `get_segmenter`'s cache key is now
+  deterministic for value/dict/list kwargs (object instances still key by
+  identity, preserving shared-instance reuse).
+- Corrected the false "[DEPRECATED]/backward compatibility" labels on
+  `get_amplitude_envelope` (it is the supported functional wrapper over
+  `get_envelope_computer`).
 - `scripts/findsylls_test_battery.py`: corrected `EVAL_TIERS` to match the
   TIMIT `*_syllabified.TextGrid` tier order `{phone: 0, word: 1, syllable: 2}`
   (was inverted, silently scoring nuclei against the syllable tier), and added

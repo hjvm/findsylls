@@ -17,6 +17,7 @@ import gc
 from ..audio.utils import load_audio
 from ..pipeline.pipeline import segment_loaded_audio
 from ..segmentation import list_segmenters
+from ..segmentation.dispatch import clear_segmenter_cache
 from ..presets import list_presets, resolve_preset
 from ..features import get_extractor
 from .extractors import extract_features
@@ -695,6 +696,9 @@ def _embed_corpus_impl(
     finally:
         if shared_extractor is not None and hasattr(shared_extractor, 'release'):
             shared_extractor.release()
+        # Release per-file segmenter models cached during this corpus pass
+        # (workflow-boundary teardown, per the memory-safety policy).
+        clear_segmenter_cache()
         gc.collect()
 
     if verbose:
@@ -924,6 +928,9 @@ def _embed_corpus_to_storage_impl(
     finally:
         if shared_extractor is not None and hasattr(shared_extractor, 'release'):
             shared_extractor.release()
+        # Release per-file segmenter models cached during this corpus pass
+        # (workflow-boundary teardown, per the memory-safety policy).
+        clear_segmenter_cache()
         gc.collect()
 
     manifest_path = output_dir / manifest_name
