@@ -1,8 +1,9 @@
 """Factory function for creating EnvelopeComputer instances.
 
-This module provides get_envelope_computer() for backward compatibility
-and convenience. The functional API (get_amplitude_envelope) is deprecated
-in favor of using EnvelopeComputer classes directly.
+This module provides get_envelope_computer() (OOP-first, canonical) and the
+get_amplitude_envelope() functional wrapper. Per the project's API design rules,
+the functional wrapper is a thin convenience over the EnvelopeComputer classes;
+it is fully supported, not deprecated.
 """
 from .base import EnvelopeComputer
 from .rms import RMSEnvelope, compute_rms_envelope
@@ -123,11 +124,11 @@ def get_envelope_computer(method: str = "sbs", **kwargs) -> EnvelopeComputer:
 
 
 def get_amplitude_envelope(waveform: np.ndarray, sr: int, method: str = "sbs", **kwargs) -> tuple:
-    """[DEPRECATED] Compute amplitude envelope using various methods.
-    
-    Deprecated: Use get_envelope_computer() with EnvelopeComputer classes instead.
-    This functional API is maintained for backward compatibility only.
-    
+    """Compute amplitude envelope using various methods.
+
+    Functional wrapper over get_envelope_computer(); use the EnvelopeComputer
+    classes directly for OOP composition. Both are supported entry points.
+
     Args:
         waveform: Audio signal
         sr: Sample rate

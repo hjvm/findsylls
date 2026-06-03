@@ -3,16 +3,13 @@ Dispatch system for segmentation methods.
 
 Provides:
 - Registration system for extensible method discovery
-- Backward-compatible functional API (segment_envelope)
-- New unified API (get_segmenter, segment_audio)
+- Unified API (get_segmenter)
 - Lazy loading for end-to-end models
 """
 
-from typing import Dict, Type, List, Tuple, Optional
-import numpy as np
+from typing import Dict, Type, List
 
-from .base import BaseSegmenter, EnvelopeBasedSegmenter, End2EndSegmenter
-from .peakdetect_segmenter import segment_peakdetect
+from .base import BaseSegmenter
 
 
 # Registry for segmentation methods
@@ -200,57 +197,6 @@ def _register_feature_methods() -> None:
 
     _FEATURE_METHODS_REGISTERED = True
 
-
-# Backward-compatible functional API
-def segment_envelope(
-    envelope: np.ndarray, 
-    times: np.ndarray, 
-    method: str = "peakdetect", 
-    **kwargs
-) -> List[Tuple[float, float, float]]:
-    """
-    Segment from pre-computed envelope (backward compatible).
-    
-    This is the original functional API. For new code, consider using
-    get_segmenter() for more flexibility.
-    
-    Args:
-        envelope: Amplitude envelope
-        times: Time array (seconds)
-        method: Segmentation method name
-        **kwargs: Method-specific parameters
-    
-    Returns:
-        List of (start, nucleus, end) tuples
-    
-    Raises:
-        ValueError: If method requires raw audio (end-to-end methods)
-    """
-    if method is None:
-        method = "peakdetect"
-
-    method = normalize_segmenter_name(method)
-    
-    # For backward compatibility, call original function directly if peakdetect
-    if method == "peakdetect":
-        return segment_peakdetect(envelope=envelope, times=times, **kwargs)
-    
-    # Otherwise use new system
-    try:
-        segmenter = get_segmenter(method, **kwargs)
-    except ValueError:
-        raise ValueError(f"Unsupported segmentation method: {method}")
-    
-    # Check if segmenter can accept envelope
-    if isinstance(segmenter, EnvelopeBasedSegmenter):
-        return segmenter.segment(envelope=envelope, times=times, **kwargs)
-    elif isinstance(segmenter, End2EndSegmenter):
-        raise ValueError(
-            f"Method '{method}' is an end-to-end neural method that requires raw audio. "
-            f"Use segment_audio() from pipeline module instead."
-        )
-    else:
-        raise ValueError(f"Unknown segmenter type: {type(segmenter)}")
 
 
 def clear_segmenter_cache():
