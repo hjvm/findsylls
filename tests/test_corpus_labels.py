@@ -46,17 +46,90 @@ def test_attach_textgrid_labels_to_manifest_with_globs(tmp_path):
         manifest,
         wav_paths=str(tmp_path / "*.wav"),
         textgrid_paths=str(tmp_path / "*.TextGrid"),
-        textgrid_tier_index=0,
+        textgrid_tiers={"syllable": 0},
         primary_label_mode="sequence",
         output_path=tmp_path / "labeled_manifest.csv",
     )
 
     assert (tmp_path / "labeled_manifest.csv").exists()
-    assert list(labeled["primary_label"]) == ["alpha", "beta"]
+    assert list(labeled["syllable_primary_label"]) == ["alpha", "beta"]
     assert bool(labeled.loc[0, "label_attached"]) is True
     assert labeled.loc[0, "label_source"] == "textgrid"
-    assert labeled.loc[0, "tg_labels"] == ["alpha"]
-    assert labeled.loc[1, "tg_labels"] == ["beta"]
+    assert labeled.loc[0, "syllable_tg_labels"] == ["alpha"]
+    assert labeled.loc[1, "syllable_tg_labels"] == ["beta"]
+    # No unprefixed leakage of per-tier columns.
+    assert "primary_label" not in labeled.columns
+    assert "tg_labels" not in labeled.columns
+
+
+def _write_two_tier_textgrid(path: Path) -> None:
+    """Tier 0 = word-level labels; tier 1 = finer (syllable-level) labels."""
+    tg = TextGrid(minTime=0.0, maxTime=1.0)
+    word_tier = IntervalTier(name="words", minTime=0.0, maxTime=1.0)
+    word_tier.add(0.0, 1.0, "hello")
+    fine_tier = IntervalTier(name="syllables", minTime=0.0, maxTime=1.0)
+    fine_tier.add(0.0, 0.45, "alpha")
+    fine_tier.add(0.45, 1.0, "beta")
+    tg.append(word_tier)
+    tg.append(fine_tier)
+    tg.write(str(path))
+
+
+def test_attach_textgrid_labels_multi_tier(tmp_path):
+    audio_path = tmp_path / "toy.wav"
+    audio_path.write_bytes(b"")  # only the stem is used for TextGrid matching
+
+    tg_path = tmp_path / "toy.TextGrid"
+    _write_two_tier_textgrid(tg_path)
+
+    manifest = pd.DataFrame(
+        [
+            {"audio_path": str(audio_path), "start": 0.05, "peak": 0.12, "end": 0.25, "cluster_label": 0},
+            {"audio_path": str(audio_path), "start": 0.55, "peak": 0.65, "end": 0.85, "cluster_label": 1},
+        ]
+    )
+
+    labeled = attach_textgrid_labels_to_manifest(
+        manifest,
+        wav_paths=str(tmp_path / "*.wav"),
+        textgrid_paths=str(tmp_path / "*.TextGrid"),
+        textgrid_tiers={"word": 0, "fine": 1},
+    )
+
+    assert "word_primary_label" in labeled.columns
+    assert "fine_primary_label" in labeled.columns
+    assert list(labeled["word_primary_label"]) == ["hello", "hello"]
+    assert list(labeled["fine_primary_label"]) == ["alpha", "beta"]
+    # Shared columns written once, unprefixed.
+    assert bool(labeled.loc[0, "label_attached"]) is True
+    assert labeled.loc[0, "label_source"] == "textgrid"
+    # No unprefixed per-tier leakage.
+    assert "primary_label" not in labeled.columns
+
+
+def test_attach_textgrid_labels_single_tier_via_dict(tmp_path):
+    audio_path = tmp_path / "toy.wav"
+    audio_path.write_bytes(b"")
+
+    tg_path = tmp_path / "toy.TextGrid"
+    _write_textgrid(tg_path)
+
+    manifest = pd.DataFrame(
+        [
+            {"audio_path": str(audio_path), "start": 0.05, "peak": 0.12, "end": 0.25, "cluster_label": 0},
+        ]
+    )
+
+    labeled = attach_textgrid_labels_to_manifest(
+        manifest,
+        wav_paths=str(tmp_path / "*.wav"),
+        textgrid_paths=str(tmp_path / "*.TextGrid"),
+        textgrid_tiers={"phone": 0},
+    )
+
+    assert "phone_primary_label" in labeled.columns
+    assert labeled.loc[0, "phone_primary_label"] == "alpha"
+    assert "primary_label" not in labeled.columns
 
 
 def test_compute_discovery_label_metrics():

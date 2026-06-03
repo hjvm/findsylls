@@ -49,3 +49,7 @@ models/
 
 # Reference implementations cloned for parity testing (not part of the package)
 reference_repos/
+
+# Battery / test run outputs
+test_output_baseline/
+test_output_probe/

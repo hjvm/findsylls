@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.2.0] - 2026-06-03
+
+> Consolidates unreleased work since 3.0.1 (the 3.0.2 / 3.1.x series was
+> published from `__version__` without CHANGELOG entries) and adds the changes
+> below.
+
+### Breaking Changes
+- `attach_textgrid_labels_to_manifest()` now takes a required
+  `textgrid_tiers: Dict[str, int]` (same shape as `evaluate_segmentation`'s
+  `tiers`) instead of `textgrid_tier_index: int = 0`. Per-tier label columns are
+  written with a `{tier_name}_` prefix (`{tier}_tg_labels`,
+  `{tier}_labels_concat`, `{tier}_primary_label`, `{tier}_primary_label_peak`,
+  `{tier}_primary_label_max_overlap`); `textgrid_path`, `label_attached`, and
+  `label_source` remain shared and unprefixed. The private `_row_textgrid_labels`
+  return key `tier_labels_concat` was renamed to `labels_concat`. Downstream
+  callers must pass an explicit `label_column` (e.g. `syllable_primary_label`)
+  to `compute_discovery_label_metrics` / `export_discovery_label_artifacts`.
+
 ## [3.0.1] - 2026-05-04
 
 ### Removed

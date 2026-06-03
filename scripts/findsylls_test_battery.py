@@ -59,7 +59,11 @@ from findsylls.segmentation.presets import (
     list_segmenter_presets,
 )
 
-EVAL_TIERS = {"phone": 2, "syllable": 1, "word": 0}
+# Tier indices for the TIMIT *_syllabified.TextGrid files used by this battery,
+# whose tier order is (phones, words, syllables). Must match the corpus layout:
+# an inverted mapping silently scores nuclei against the wrong tier (e.g. nuclei
+# vs. the syllable tier) and produces meaningless metrics.
+EVAL_TIERS = {"phone": 0, "word": 1, "syllable": 2}
 DEFAULT_NEURAL_FEATURES = ["hubert", "sylber", "vghubert"]
 DEFAULT_PSEUDO_ENVELOPES = ["cls_attention", "greedy_cosine", "mincut"]
 DEFAULT_CORPUS_DIR = REPO_ROOT / "data" / "timit1"
@@ -900,9 +904,15 @@ def run_evaluation_battery(
                 file_manifest=file_manifest_df,
                 wav_paths=paired_subset_df["audio_file"].tolist(),
                 textgrid_paths=paired_subset_df["tg_file"].tolist(),
-                textgrid_tier_index=0,
+                # Syllable-tier labels (idx 2) for syllable-cluster purity. The
+                # tg files carry the _syllabified suffix, which must be stripped
+                # for the internal wav<->TextGrid re-match, else no labels attach.
+                textgrid_tiers={"syllable": 2},
+                tg_suffix_to_strip="_syllabified",
             )
-            label_metrics = compute_discovery_label_metrics(labeled_manifest)
+            label_metrics = compute_discovery_label_metrics(
+                labeled_manifest, label_column="syllable_primary_label"
+            )
             labeled_manifest = build_label_manifest(labeled_manifest)
             module_manifest_frames.append(
                 labeled_manifest.assign(

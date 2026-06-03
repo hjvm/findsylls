@@ -21,6 +21,21 @@ from ..parsing.textgrid_parser import parse_textgrid_intervals
 
 ManifestLike = Union[pd.DataFrame, List[Dict[str, Any]], str, Path]
 
+# Keys produced by ``_row_textgrid_labels`` that are shared across all tiers
+# (they describe the source TextGrid, not a particular tier) and are therefore
+# written once per row without a ``{tier_name}_`` prefix.
+_SHARED_LABEL_KEYS = {"textgrid_path", "label_attached", "label_source"}
+
+# Per-tier label keys (written with a ``{tier_name}_`` prefix), used to seed
+# empty defaults on the fallback path when no TextGrid is matched for a row.
+_PER_TIER_LABEL_DEFAULTS: Dict[str, Any] = {
+    "tg_labels": [],
+    "labels_concat": "",
+    "primary_label": "",
+    "primary_label_peak": "",
+    "primary_label_max_overlap": "",
+}
+
 
 def _coerce_manifest_frame(manifest: ManifestLike) -> pd.DataFrame:
     if isinstance(manifest, pd.DataFrame):
@@ -102,7 +117,7 @@ def _row_textgrid_labels(
 
     return {
         "tg_labels": attached,
-        "tier_labels_concat": " ".join(attached),
+        "labels_concat": " ".join(attached),
         "primary_label": primary_label,
         "primary_label_peak": peak_label or "",
         "primary_label_max_overlap": best_label or "",
@@ -123,7 +138,7 @@ def attach_textgrid_labels_to_manifest(
     start_column: str = "start",
     peak_column: str = "peak",
     end_column: str = "end",
-    textgrid_tier_index: int = 0,
+    textgrid_tiers: Dict[str, int],
     primary_label_mode: str = "sequence",
     textgrid_overlap_threshold: float = 0.5,
     textgrid_overlap_min_sec: float = 0.03,
@@ -136,7 +151,21 @@ def attach_textgrid_labels_to_manifest(
     a discovery manifest with per-syllable spans) and enrich it with TextGrid
     labels. The same function can be called before writing the manifest to disk
     for the early-injection path.
+
+    Multiple tiers are attached in one pass. ``textgrid_tiers`` takes the same
+    shape as ``evaluate_segmentation``'s ``tiers`` argument, e.g.
+    ``{'word': 0, 'syllable': 1}`` or ``{'syllable': 1}`` for a single tier. For
+    each tier, the per-tier label columns are written with a ``{tier_name}_``
+    prefix (``{tier}_tg_labels``, ``{tier}_labels_concat``,
+    ``{tier}_primary_label``, ``{tier}_primary_label_peak``,
+    ``{tier}_primary_label_max_overlap``). The source-level columns
+    ``textgrid_path``, ``label_attached``, and ``label_source`` are shared across
+    tiers and written once per row, unprefixed. ``primary_label_mode``,
+    ``textgrid_overlap_threshold``, and ``textgrid_overlap_min_sec`` apply
+    uniformly to every tier.
     """
+    if not textgrid_tiers:
+        raise ValueError("textgrid_tiers must be a non-empty {tier_name: tier_index} mapping")
     df = _coerce_manifest_frame(manifest)
     if audio_path_column not in df.columns:
         if file_manifest is None:
@@ -161,11 +190,11 @@ def attach_textgrid_labels_to_manifest(
         audio_path = str(row_dict[audio_path_column])
         tg_path = tg_lookup.get(Path(audio_path).stem)
         if tg_path is not None and tg_path.exists():
-            row_dict.update(
-                _row_textgrid_labels(
+            for tier_name, tier_index in textgrid_tiers.items():
+                tier_labels = _row_textgrid_labels(
                     row,
                     tg_path,
-                    textgrid_tier_index=textgrid_tier_index,
+                    textgrid_tier_index=tier_index,
                     primary_label_mode=primary_label_mode,
                     textgrid_overlap_threshold=textgrid_overlap_threshold,
                     textgrid_overlap_min_sec=textgrid_overlap_min_sec,
@@ -173,13 +202,17 @@ def attach_textgrid_labels_to_manifest(
                     peak_column=peak_column,
                     end_column=end_column,
                 )
-            )
+                for key, value in tier_labels.items():
+                    if key in _SHARED_LABEL_KEYS:
+                        # Same for every tier (describes the source TextGrid);
+                        # written once per row, unprefixed.
+                        row_dict[key] = value
+                    else:
+                        row_dict[f"{tier_name}_{key}"] = value
         else:
-            row_dict.setdefault("tg_labels", [])
-            row_dict.setdefault("tier_labels_concat", "")
-            row_dict.setdefault("primary_label", "")
-            row_dict.setdefault("primary_label_peak", "")
-            row_dict.setdefault("primary_label_max_overlap", "")
+            for tier_name in textgrid_tiers:
+                for key, default in _PER_TIER_LABEL_DEFAULTS.items():
+                    row_dict.setdefault(f"{tier_name}_{key}", default)
             row_dict.setdefault("textgrid_path", "")
             row_dict.setdefault("label_attached", False)
             row_dict.setdefault("label_source", "")
