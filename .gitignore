@@ -53,3 +53,4 @@ reference_repos/
 # Battery / test run outputs
 test_output_baseline/
 test_output_probe/
+test_output_phase4/
