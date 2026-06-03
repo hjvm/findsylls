@@ -33,16 +33,19 @@ if TYPE_CHECKING:
 
 class SBSPeakdetectSegmenter(PeakdetectSegmenter):
     """
-    Spectral Band Subtraction envelope + peak detection (dissertation baseline).
+    Spectral Band Subtraction envelope + peak detection (findsylls baseline).
 
-    Replicates the experimental baseline configuration used in the dissertation:
+    A baseline configuration combining the SBS envelope (Liberman 2022) with
+    Billauer peak detection (Billauer 2009), as benchmarked in the findsylls
+    toolkit paper. SBS is used here as a baseline; it is not a novel method.
     - Envelope: SBS (low-frequency minus high-frequency spectral energy, pivot at 3000 Hz,
                 Hamming-smoothed at 70 ms / 7 samples at 100 Hz frame rate)
     - Segmentation: Billauer valley-picking with max syllable duration cap (400 ms)
                     and shallow-valley filter (merge valleys shallower than 40% of local max)
 
     Reference:
-        Vázquez, H. J. (in preparation). University of Pennsylvania doctoral dissertation.
+        SBS envelope: Liberman, M. (2022).
+        Peak detection: Billauer, E. (2009). peakdet: Peak detection using MATLAB.
 
     Args:
         pivot_freq: Frequency (Hz) dividing low- from high-energy bands (default: 3000)
@@ -65,11 +68,12 @@ class SBSPeakdetectSegmenter(PeakdetectSegmenter):
     """
 
     REFERENCE = (
-        "Vázquez, H. J. (in preparation). "
-        "University of Pennsylvania doctoral dissertation. "
-        "Baseline configuration: SBS envelope (pivot_freq=3000 Hz, "
-        "smoothing_window=70 ms at 100 Hz) + Billauer peak detection "
-        "(delta=0.01, max_syllable_dur=0.4 s, amplitude_ratio_tol=0.4)."
+        "findsylls SBS baseline. "
+        "SBS envelope: Liberman, M. (2022). "
+        "Peak detection: Billauer, E. (2009). peakdet: Peak detection using MATLAB. "
+        "Configuration: SBS envelope (pivot_freq=3000 Hz, smoothing_window=70 ms at "
+        "100 Hz) + Billauer peak detection (delta=0.01, max_syllable_dur=0.4 s, "
+        "amplitude_ratio_tol=0.4)."
     )
 
     def __init__(
