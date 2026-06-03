@@ -20,6 +20,20 @@ All notable changes to this project will be documented in this file.
   callers must pass an explicit `label_column` (e.g. `syllable_primary_label`)
   to `compute_discovery_label_metrics` / `export_discovery_label_artifacts`.
 
+### Added
+- `collapse_clusters(embeddings, labels, n_clusters)` in `discovery/collapse.py`:
+  collapses K fine-grained cluster labels into n_clusters coarse labels via
+  agglomerative clustering on per-cluster centroids. Returns `(new_labels,
+  centroids, centroid_map)` for test-time nearest-centroid assignment. Exported
+  from `findsylls.discovery` and the top-level `findsylls` package.
+
+### Fixed
+- `scripts/findsylls_test_battery.py`: corrected `EVAL_TIERS` to match the
+  TIMIT `*_syllabified.TextGrid` tier order `{phone: 0, word: 1, syllable: 2}`
+  (was inverted, silently scoring nuclei against the syllable tier), and added
+  `tg_suffix_to_strip="_syllabified"` to the label-attachment call so syllable
+  labels actually attach.
+
 ## [3.0.1] - 2026-05-04
 
 ### Removed
