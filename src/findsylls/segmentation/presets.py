@@ -44,8 +44,10 @@ class SBSPeakdetectSegmenter(PeakdetectSegmenter):
                     and shallow-valley filter (merge valleys shallower than 40% of local max)
 
     Reference:
-        SBS envelope: Liberman, M. (2022).
-        Peak detection: Billauer, E. (2009). peakdet: Peak detection using MATLAB.
+        SBS envelope: Liberman, M. (2020). "Syllables." Language Log.
+        https://languagelog.ldc.upenn.edu/nll/?p=46144
+        Peak detection: Billauer, E. peakdet: Peak detection using MATLAB.
+        http://billauer.co.il/peakdet.html
 
     Args:
         pivot_freq: Frequency (Hz) dividing low- from high-energy bands (default: 3000)
@@ -69,8 +71,12 @@ class SBSPeakdetectSegmenter(PeakdetectSegmenter):
 
     REFERENCE = (
         "findsylls SBS baseline. "
-        "SBS envelope: Liberman, M. (2022). "
-        "Peak detection: Billauer, E. (2009). peakdet: Peak detection using MATLAB. "
+        'SBS envelope: Liberman, M. (2020, Feb 24). "Syllables." Language Log. '
+        "https://languagelog.ldc.upenn.edu/nll/?p=46144 "
+        "(sum of spectral energy below 3 kHz minus sum above 3 kHz, smoothed, "
+        "peak-picked). "
+        "Peak detection: Billauer, E. peakdet: Peak detection using MATLAB. "
+        "http://billauer.co.il/peakdet.html. "
         "Configuration: SBS envelope (pivot_freq=3000 Hz, smoothing_window=70 ms at "
         "100 Hz) + Billauer peak detection (delta=0.01, max_syllable_dur=0.4 s, "
         "amplitude_ratio_tol=0.4)."
