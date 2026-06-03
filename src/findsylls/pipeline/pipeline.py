@@ -96,15 +96,22 @@ def segment_loaded_audio(
     elif isinstance(segmenter, EnvelopeBasedSegmenter):
         # Envelope-based method (classical signal processing or peak detection)
         if return_envelope:
-            # Compute envelope once for both visualization AND segmentation
+            # Compute envelope once for visualization.
             from ..envelope.dispatch import get_amplitude_envelope
 
             envelope, times = get_amplitude_envelope(audio, sr, method=segmenter_kwargs.get("envelope_method", "hilbert"), **(segmenter_kwargs.get("envelope_kwargs") or {}))
-            # Pass pre-computed envelope to avoid recomputation
-            syllables = segmenter.segment(envelope=envelope, times=times)
+            if getattr(segmenter, "sad", None) is not None:
+                # SAD chunking happens only on the audio entry point; the
+                # envelope=/times= shortcut bypasses it. When a SAD is configured,
+                # segment from audio so speech-region restriction is honored, and
+                # still return the full-file envelope for visualization.
+                syllables = segmenter.segment(audio=audio, sr=sr)
+            else:
+                # No SAD: reuse the precomputed envelope to avoid recomputation.
+                syllables = segmenter.segment(envelope=envelope, times=times)
             return syllables, envelope, times
         else:
-            # Segment from audio (envelope computed internally)
+            # Segment from audio (envelope computed internally; honors SAD)
             syllables = segmenter.segment(audio=audio, sr=sr)
             return syllables, None, None
     
