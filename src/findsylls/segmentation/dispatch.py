@@ -10,6 +10,11 @@ Provides:
 from typing import Dict, Type, List
 
 from .base import BaseSegmenter
+# Light imports (no torch / no import cycle): used by the module-level peakdetect
+# registry default below. Feature-based factories keep their imports lazy inside
+# _register_feature_methods because they pull heavy/optional extractor deps.
+from .peakdetect_segmenter import PeakdetectSegmenter
+from ..envelope.base import EnvelopeComputer
 
 
 # Registry for segmentation methods
@@ -137,36 +142,39 @@ def get_segmenter(method: str, cache: bool = True, **kwargs) -> BaseSegmenter:
     return instance
 
 
+class _ConfigurableEnvelope(EnvelopeComputer):
+    """Envelope computer that defers to a named ``get_amplitude_envelope`` method.
+
+    Used by the ``peakdetect`` registry default so the dispatch caller can pick an
+    envelope method (``hilbert``, ``sbs``, ``theta``, ...) by name. The
+    ``get_amplitude_envelope`` import stays lazy to avoid eagerly pulling envelope
+    backends at module load.
+    """
+
+    def __init__(self, method: str = "hilbert", env_kwargs=None):
+        self.method = method
+        self.env_kwargs = env_kwargs or {}
+
+    def compute(self, audio, sr):
+        from ..envelope.dispatch import get_amplitude_envelope
+        return get_amplitude_envelope(audio, sr, method=self.method, **self.env_kwargs)
+
+
+class DefaultPeakdetectSegmenter(PeakdetectSegmenter):
+    """``peakdetect`` registry default: a PeakdetectSegmenter whose envelope is
+    selected by name via ``envelope_method`` / ``envelope_kwargs``."""
+
+    def __init__(self, envelope_method: str = "hilbert", envelope_kwargs=None, **kwargs):
+        super().__init__(_ConfigurableEnvelope(envelope_method, envelope_kwargs), **kwargs)
+
+
 def _register_envelope_methods():
     """Register all envelope-based methods."""
     global _ENVELOPE_METHODS_REGISTERED
     if not _ENVELOPE_METHODS_REGISTERED:
-        from .peakdetect_segmenter import PeakdetectSegmenter
-        from ..envelope.base import EnvelopeComputer
-        
-        # Create a default envelope computer for backward compatibility
-        class DefaultHilbertEnvelope(EnvelopeComputer):
-            def compute(self, audio, sr):
-                from ..envelope.dispatch import get_amplitude_envelope
-                return get_amplitude_envelope(audio, sr, method='hilbert')
-        
-        # Register with default envelope for dispatch compatibility
-        class DefaultPeakdetectSegmenter(PeakdetectSegmenter):
-            def __init__(self, envelope_method='hilbert', envelope_kwargs=None, **kwargs):
-                # Create appropriate envelope computer based on method
-                class ConfigurableEnvelope(EnvelopeComputer):
-                    def __init__(self, method, env_kwargs):
-                        self.method = method
-                        self.env_kwargs = env_kwargs or {}
-                    def compute(self, audio, sr):
-                        from ..envelope.dispatch import get_amplitude_envelope
-                        return get_amplitude_envelope(audio, sr, method=self.method, **self.env_kwargs)
-                
-                envelope_computer = ConfigurableEnvelope(envelope_method, envelope_kwargs)
-                super().__init__(envelope_computer, **kwargs)
-        
         register_segmenter('peakdetect', DefaultPeakdetectSegmenter)
 
+        # cls_attention pulls neural feature deps; import lazily.
         from .cls_attention import CLSAttentionSegmenter
         register_segmenter('cls_attention', CLSAttentionSegmenter)
         _ENVELOPE_METHODS_REGISTERED = True
