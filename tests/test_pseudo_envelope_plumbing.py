@@ -53,8 +53,8 @@ def test_peakdetect_pseudo_envelope_forwards_feature_context(monkeypatch):
         calls["samplerate"] = samplerate
         return np.zeros(16, dtype=np.float32), samplerate
 
-    def fake_segment_audio_pipeline(**kwargs):
-        calls["segment_audio_pipeline"] = kwargs
+    def fake_segment_loaded_audio(audio, sr, **kwargs):
+        calls["segment_loaded_audio"] = kwargs
         return [(0.0, 0.1, 0.2)], None, None
 
     def fake_extract_features(audio, sr, method, layer=None, device="auto", return_times=False, **kwargs):
@@ -78,7 +78,7 @@ def test_peakdetect_pseudo_envelope_forwards_feature_context(monkeypatch):
         return np.ones((len(syllables), frame_features.shape[1]), dtype=np.float32)
 
     monkeypatch.setattr("findsylls.embedding.pipeline.load_audio", fake_load_audio)
-    monkeypatch.setattr("findsylls.embedding.pipeline.segment_audio_pipeline", fake_segment_audio_pipeline)
+    monkeypatch.setattr("findsylls.embedding.pipeline.segment_loaded_audio", fake_segment_loaded_audio)
     monkeypatch.setattr("findsylls.embedding.pipeline.extract_features", fake_extract_features)
     monkeypatch.setattr("findsylls.embedding.pipeline.pool_syllables", fake_pool_syllables)
 
@@ -92,9 +92,9 @@ def test_peakdetect_pseudo_envelope_forwards_feature_context(monkeypatch):
         return_metadata=True,
     )
 
-    assert calls["segment_audio_pipeline"]["method"] == "peakdetect"
-    assert calls["segment_audio_pipeline"]["segmentation_kwargs"]["envelope_method"] == "cls_attention"
-    envelope_kwargs = calls["segment_audio_pipeline"]["segmentation_kwargs"]["envelope_kwargs"]
+    assert calls["segment_loaded_audio"]["method"] == "peakdetect"
+    assert calls["segment_loaded_audio"]["segmentation_kwargs"]["envelope_method"] == "cls_attention"
+    envelope_kwargs = calls["segment_loaded_audio"]["segmentation_kwargs"]["envelope_kwargs"]
     assert envelope_kwargs["feature_type"] == "hubert"
     assert envelope_kwargs["feature_kwargs"] == {"model_name": "facebook/hubert-base-ls960"}
     assert calls["extract_features"]["return_times"] is True
@@ -109,8 +109,8 @@ def test_sylber_onc_uses_requested_segmentation(monkeypatch):
     def fake_load_audio(audio_file, samplerate=16000):
         return np.zeros(16, dtype=np.float32), samplerate
 
-    def fake_segment_audio_pipeline(**kwargs):
-        calls["segment_audio_pipeline"] = kwargs
+    def fake_segment_loaded_audio(audio, sr, **kwargs):
+        calls["segment_loaded_audio"] = kwargs
         return [(0.0, 0.1, 0.2)], None, None
 
     def fake_extract_features(audio, sr, method, layer=None, device="auto", return_times=False, return_segments=False, **kwargs):
@@ -132,7 +132,7 @@ def test_sylber_onc_uses_requested_segmentation(monkeypatch):
         return np.ones((len(syllables), frame_features.shape[1]), dtype=np.float32)
 
     monkeypatch.setattr("findsylls.embedding.pipeline.load_audio", fake_load_audio)
-    monkeypatch.setattr("findsylls.embedding.pipeline.segment_audio_pipeline", fake_segment_audio_pipeline)
+    monkeypatch.setattr("findsylls.embedding.pipeline.segment_loaded_audio", fake_segment_loaded_audio)
     monkeypatch.setattr("findsylls.embedding.pipeline.extract_features", fake_extract_features)
     monkeypatch.setattr("findsylls.embedding.pipeline.pool_syllables", fake_pool_syllables)
 
@@ -145,7 +145,7 @@ def test_sylber_onc_uses_requested_segmentation(monkeypatch):
         return_metadata=True,
     )
 
-    assert calls["segment_audio_pipeline"]["method"] == "cls_attention"
+    assert calls["segment_loaded_audio"]["method"] == "cls_attention"
     assert calls["extract_features"]["return_segments"] is False
     assert embeddings.shape == (1, 3)
     assert metadata["segmentation_method"] == "cls_attention"

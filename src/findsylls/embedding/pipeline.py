@@ -15,7 +15,7 @@ import warnings
 import gc
 
 from ..audio.utils import load_audio
-from ..pipeline.pipeline import segment_audio as segment_audio_pipeline
+from ..pipeline.pipeline import segment_loaded_audio
 from ..segmentation import list_segmenters
 from ..presets import list_presets, resolve_preset
 from ..features import get_extractor
@@ -428,17 +428,18 @@ def _embed_audio_impl(
         }
         peakdetect_kwargs["envelope_method"] = envelope_method
         peakdetect_kwargs["envelope_kwargs"] = peakdetect_envelope_kwargs
-        syllables, _, _ = segment_audio_pipeline(
-            audio_file=audio_path,
-            samplerate=actual_sr,
+        # Reuse the already-loaded waveform instead of reloading from disk.
+        syllables, _, _ = segment_loaded_audio(
+            audio,
+            actual_sr,
             method='peakdetect',
             segmentation_kwargs=peakdetect_kwargs,
             return_envelope=False,
         )
     else:
-        syllables, _, _ = segment_audio_pipeline(
-            audio_file=audio_path,
-            samplerate=actual_sr,
+        syllables, _, _ = segment_loaded_audio(
+            audio,
+            actual_sr,
             method=segmentation,
             segmentation_kwargs=bound_segmentation_kwargs,
         )

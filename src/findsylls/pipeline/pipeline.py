@@ -53,12 +53,33 @@ def segment_audio(
         ...                                        method='peakdetect',
         ...                                        segmentation_kwargs={'envelope_method': 'hilbert'})
     """
+    # Load audio once, then delegate to the array-based core.
+    audio, sr = load_audio(audio_file, samplerate=samplerate)
+    return segment_loaded_audio(
+        audio,
+        sr,
+        method=method,
+        segmentation_kwargs=segmentation_kwargs,
+        return_envelope=return_envelope,
+    )
+
+
+def segment_loaded_audio(
+    audio: np.ndarray,
+    sr: int,
+    method: str = "peakdetect",
+    segmentation_kwargs: Optional[dict] = None,
+    return_envelope: bool = True,
+) -> Tuple[List[Tuple[float, float, float]], Optional[np.ndarray], Optional[np.ndarray]]:
+    """Segment a pre-loaded audio array into syllables.
+
+    Core of ``segment_audio`` operating on an in-memory ``(audio, sr)`` pair so
+    callers that already hold the waveform (e.g. the embedding pipeline) do not
+    reload it from disk.
+    """
     if segmentation_kwargs is None:
         segmentation_kwargs = {}
-    
-    # Load audio
-    audio, sr = load_audio(audio_file, samplerate=samplerate)
-    
+
     # Get segmenter
     segmenter_kwargs = {**segmentation_kwargs}
     if method == "peakdetect":
