@@ -19,6 +19,13 @@ All notable changes to this project will be documented in this file.
   return key `tier_labels_concat` was renamed to `labels_concat`. Downstream
   callers must pass an explicit `label_column` (e.g. `syllable_primary_label`)
   to `compute_discovery_label_metrics` / `export_discovery_label_artifacts`.
+- `evaluate_segmentation()` now always emits tier-prefixed boundary/span keys
+  (`{tier}_boundaries`, `{tier}_spans`) even when a single non-phone tier is
+  evaluated. Previously a single tier produced generic `boundaries`/`spans` keys
+  plus a `tier_level` metadata field, so the same syllable metric changed name
+  depending on whether other tiers were evaluated alongside it (splitting
+  `groupby('eval_method')` in cross-corpus aggregation). The `tier_level` key is
+  removed; `flatten_results`/`plot_segmentation` no longer reference it.
 
 ### Added
 - `collapse_clusters(embeddings, labels, n_clusters)` in `discovery/collapse.py`:

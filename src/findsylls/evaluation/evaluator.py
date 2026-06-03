@@ -104,13 +104,13 @@ def evaluate_segmentation(
 
     # Determine evaluation tiers (non-phone tiers for boundaries/spans)
     eval_tiers = {name: idx for name, idx in tiers.items() if name != 'phone'}
-    
-    # If only one tier specified for boundary/span evaluation, use generic keys
-    # Otherwise use tier-specific keys (for multi-level comparison)
-    use_generic_keys = len(eval_tiers) == 1
-    evaluated_tier_name = None
-    
-    # Evaluate boundaries and spans for each specified tier
+
+    # Evaluate boundaries and spans for each tier. Keys are ALWAYS tier-prefixed
+    # ({tier}_boundaries / {tier}_spans), so a given tier produces the same column
+    # whether evaluated alone or alongside others. (Previously a single non-phone
+    # tier emitted generic 'boundaries'/'spans' keys, so the same syllable metric
+    # changed name depending on whether a word tier was also requested — which
+    # silently split groups in cross-corpus groupby('eval_method') aggregation.)
     for tier_name, tier_index in eval_tiers.items():
         if tier_index == -1 and tier_name == 'syllable':
             # Special case: generate synthetic syllables (requires phone tier)
@@ -120,25 +120,15 @@ def evaluate_segmentation(
                 reference_intervals = generate_syllable_intervals(textgrid_path, phone_tier_index)
         else:
             reference_intervals = extract_syllable_intervals(textgrid_path, tier_index)
-        
+
         if _is_empty_ref(reference_intervals):
             boundary_eval = None
             span_eval = None
         else:
             boundary_eval = evaluate_syllable_boundaries(spans, reference_intervals, tolerance=tolerance)
             span_eval = evaluate_syllable_spans(spans, reference_intervals, tolerance=tolerance)
-        
-        # Use generic keys if single tier, otherwise tier-specific keys
-        if use_generic_keys:
-            result["boundaries"] = boundary_eval
-            result["spans"] = span_eval
-            evaluated_tier_name = tier_name
-        else:
-            result[f"{tier_name}_boundaries"] = boundary_eval
-            result[f"{tier_name}_spans"] = span_eval
-    
-    # Add metadata about which tier was evaluated (for flattening/analysis)
-    if evaluated_tier_name:
-        result["tier_level"] = evaluated_tier_name
+
+        result[f"{tier_name}_boundaries"] = boundary_eval
+        result[f"{tier_name}_spans"] = span_eval
 
     return result
