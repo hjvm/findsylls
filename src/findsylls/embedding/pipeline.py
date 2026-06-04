@@ -15,8 +15,9 @@ import warnings
 import gc
 
 from ..audio.utils import load_audio
-from ..pipeline.pipeline import segment_audio as segment_audio_pipeline
+from ..pipeline.pipeline import segment_loaded_audio
 from ..segmentation import list_segmenters
+from ..segmentation.dispatch import clear_segmenter_cache
 from ..presets import list_presets, resolve_preset
 from ..features import get_extractor
 from .extractors import extract_features
@@ -28,6 +29,21 @@ def _normalize_name(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
     return str(value).lower().replace('-', '_').strip()
+
+
+def _inject_sad(
+    segmentation_kwargs: Optional[Dict[str, Any]], sad: Optional[Any]
+) -> Optional[Dict[str, Any]]:
+    """Fold a first-class ``sad`` argument into ``segmentation_kwargs``.
+
+    An explicit ``segmentation_kwargs['sad']`` takes precedence. Returns the
+    original mapping unchanged when ``sad`` is None.
+    """
+    if sad is None:
+        return segmentation_kwargs
+    merged = {**(segmentation_kwargs or {})}
+    merged.setdefault("sad", sad)
+    return merged
 
 
 def _canonical_feature_name(value: Optional[str]) -> Optional[str]:
@@ -428,17 +444,18 @@ def _embed_audio_impl(
         }
         peakdetect_kwargs["envelope_method"] = envelope_method
         peakdetect_kwargs["envelope_kwargs"] = peakdetect_envelope_kwargs
-        syllables, _, _ = segment_audio_pipeline(
-            audio_file=audio_path,
-            samplerate=actual_sr,
+        # Reuse the already-loaded waveform instead of reloading from disk.
+        syllables, _, _ = segment_loaded_audio(
+            audio,
+            actual_sr,
             method='peakdetect',
             segmentation_kwargs=peakdetect_kwargs,
             return_envelope=False,
         )
     else:
-        syllables, _, _ = segment_audio_pipeline(
-            audio_file=audio_path,
-            samplerate=actual_sr,
+        syllables, _, _ = segment_loaded_audio(
+            audio,
+            actual_sr,
             method=segmentation,
             segmentation_kwargs=bound_segmentation_kwargs,
         )
@@ -508,7 +525,8 @@ def embed_audio(
     segmentation_kwargs: Optional[Dict[str, Any]] = None,
     feature_kwargs: Optional[Dict[str, Any]] = None,
     pooling_kwargs: Optional[Dict[str, Any]] = None,
-    return_metadata: bool = True
+    return_metadata: bool = True,
+    sad: Optional[Any] = None,
 ) -> Tuple[np.ndarray, Optional[Dict[str, Any]]]:
     """
     Extract syllable embeddings from audio file.
@@ -571,7 +589,7 @@ def embed_audio(
         sr=sr,
         layer=layer,
         device=device,
-        segmentation_kwargs=segmentation_kwargs,
+        segmentation_kwargs=_inject_sad(segmentation_kwargs, sad),
         feature_kwargs=feature_kwargs,
         pooling_kwargs=pooling_kwargs,
         return_metadata=return_metadata,
@@ -678,6 +696,9 @@ def _embed_corpus_impl(
     finally:
         if shared_extractor is not None and hasattr(shared_extractor, 'release'):
             shared_extractor.release()
+        # Release per-file segmenter models cached during this corpus pass
+        # (workflow-boundary teardown, per the memory-safety policy).
+        clear_segmenter_cache()
         gc.collect()
 
     if verbose:
@@ -716,7 +737,8 @@ def embed_corpus(
     pooling_kwargs: Optional[Dict[str, Any]] = None,
     n_jobs: int = 1,
     verbose: bool = True,
-    fail_on_error: bool = False
+    fail_on_error: bool = False,
+    sad: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
     """
     Process multiple audio files in parallel and extract syllable embeddings.
@@ -778,7 +800,7 @@ def embed_corpus(
         sr=sr,
         layer=layer,
         device=device,
-        segmentation_kwargs=segmentation_kwargs,
+        segmentation_kwargs=_inject_sad(segmentation_kwargs, sad),
         feature_kwargs=feature_kwargs,
         pooling_kwargs=pooling_kwargs,
         n_jobs=n_jobs,
@@ -906,6 +928,9 @@ def _embed_corpus_to_storage_impl(
     finally:
         if shared_extractor is not None and hasattr(shared_extractor, 'release'):
             shared_extractor.release()
+        # Release per-file segmenter models cached during this corpus pass
+        # (workflow-boundary teardown, per the memory-safety policy).
+        clear_segmenter_cache()
         gc.collect()
 
     manifest_path = output_dir / manifest_name

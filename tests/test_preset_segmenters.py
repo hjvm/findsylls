@@ -115,6 +115,40 @@ def test_sbs_peakdetect_segment_contract_on_real_audio(sample_audio):
     _assert_valid_segments(segs, "SBSPeakdetectSegmenter")
 
 
+def test_sbs_peakdetect_exposes_lowlevel_peakdetect_params(sample_audio):
+    """min_amplitude_threshold / min_syllable_dur / merge_valley_tol / lookahead
+    must be accepted by the preset and forwarded to the segmenter."""
+    from findsylls.segmentation.presets import SBSPeakdetectSegmenter
+    audio, sr = sample_audio
+    # Deterministic: the new knobs reach the segmenter instance (and Optional
+    # caps accept None).
+    seg = SBSPeakdetectSegmenter(
+        amplitude_ratio_tol=None, max_syllable_dur=None,
+        min_amplitude_threshold=0.5, min_syllable_dur=0.12,
+        merge_valley_tol=0.07, lookahead=3,
+    )
+    assert seg.amplitude_ratio_tol is None
+    assert seg.max_syllable_dur is None
+    assert seg.min_amplitude_threshold == 0.5
+    assert seg.min_syllable_dur == 0.12
+    assert seg.merge_valley_tol == 0.07
+    assert seg.lookahead == 3
+    # Monotonicity on real audio: an absolute amplitude floor (and a larger
+    # minimum syllable duration) can only remove peaks, never add them.
+    base = SBSPeakdetectSegmenter(amplitude_ratio_tol=None, max_syllable_dur=None).segment(
+        audio=audio, sr=sr
+    )
+    _assert_valid_segments(base, "SBS base")
+    floored = SBSPeakdetectSegmenter(
+        amplitude_ratio_tol=None, max_syllable_dur=None, min_amplitude_threshold=0.5
+    ).segment(audio=audio, sr=sr)
+    longmin = SBSPeakdetectSegmenter(
+        amplitude_ratio_tol=None, max_syllable_dur=None, min_syllable_dur=0.5
+    ).segment(audio=audio, sr=sr)
+    assert len(floored) <= len(base)
+    assert len(longmin) <= len(base)
+
+
 def test_theta_oscillator_segment_contract_on_real_audio(sample_audio):
     from findsylls.segmentation.presets import ThetaOscillatorSegmenter
     audio, sr = sample_audio

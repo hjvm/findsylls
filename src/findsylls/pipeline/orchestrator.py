@@ -151,10 +151,20 @@ class FindSyllsOrchestrator:
         fail_on_error: bool = False,
         persist: bool = True,
         overwrite: bool = False,
+        sad: Optional[Any] = None,
     ) -> Dict[str, Any]:
-        """Run corpus embedding and discovery from the top-level orchestrator."""
+        """Run corpus embedding and discovery from the top-level orchestrator.
+
+        ``sad`` ('energy'/'silero' or a BaseSAD instance) restricts segmentation
+        to detected speech regions; it is folded into ``segmentation_kwargs`` (an
+        explicit ``segmentation_kwargs['sad']`` takes precedence).
+        """
         from ..discovery import DiscoveryPipeline
         from ..embedding.storage import iter_embeddings_from_manifest
+
+        if sad is not None:
+            segmentation_kwargs = {**(segmentation_kwargs or {})}
+            segmentation_kwargs.setdefault("sad", sad)
 
         _validate_peakdetect_envelope_policy(
             segmentation_method=segmentation_method,

@@ -18,7 +18,7 @@ Functional API:
 
 Object-Oriented API (for mixing envelopes with algorithms):
     from findsylls.segmentation.peakdetect_segmenter import PeakdetectSegmenter
-    from findsylls.segmentation.custom_segmenters import EnvelopeComputer
+    from findsylls.envelope.base import EnvelopeComputer
 
     class HilbertEnvelope(EnvelopeComputer):
         def compute(self, audio, sr):

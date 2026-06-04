@@ -13,7 +13,7 @@ from .greedy_cosine import GreedyCosineEnvelope
 from .mincut import MinCutEnvelope
 
 __all__ = [
-    "get_amplitude_envelope",  # Deprecated functional API (backward compatibility)
+    "get_amplitude_envelope",  # Functional wrapper over get_envelope_computer
     "get_envelope_computer",   # Factory function for EnvelopeComputer instances
     "EnvelopeComputer",
     "PseudoEnvelope",

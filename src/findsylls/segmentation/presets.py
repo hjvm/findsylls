@@ -33,25 +33,44 @@ if TYPE_CHECKING:
 
 class SBSPeakdetectSegmenter(PeakdetectSegmenter):
     """
-    Spectral Band Subtraction envelope + peak detection (dissertation baseline).
+    Spectral Band Subtraction envelope + peak detection (findsylls baseline).
 
-    Replicates the experimental baseline configuration used in the dissertation:
+    A baseline configuration combining the SBS envelope (Liberman 2020) with
+    Billauer peak detection (Billauer), as benchmarked in the findsylls
+    toolkit paper. SBS is used here as a baseline; it is not a novel method.
     - Envelope: SBS (low-frequency minus high-frequency spectral energy, pivot at 3000 Hz,
                 Hamming-smoothed at 70 ms / 7 samples at 100 Hz frame rate)
     - Segmentation: Billauer valley-picking with max syllable duration cap (400 ms)
                     and shallow-valley filter (merge valleys shallower than 40% of local max)
 
     Reference:
-        Vázquez, H. J. (in preparation). University of Pennsylvania doctoral dissertation.
+        SBS envelope: Liberman, M. (2020). "Syllables." Language Log.
+        https://languagelog.ldc.upenn.edu/nll/?p=46144
+        Peak detection: Billauer, E. peakdet: Peak detection using MATLAB.
+        http://billauer.co.il/peakdet.html
 
     Args:
         pivot_freq: Frequency (Hz) dividing low- from high-energy bands (default: 3000)
         smoothing_window_samples: Hamming window length for envelope smoothing in frames
                                   (default: 7 = 70 ms at 100 Hz frame rate)
         delta: Billauer valley depth threshold (default: 0.01)
-        max_syllable_dur: Maximum allowed syllable duration in seconds (default: 0.4)
+        max_syllable_dur: Maximum allowed syllable duration in seconds; syllables
+                          whose valley-to-valley span exceeds this are dropped
+                          (default: 0.4). Pass None to disable the cap.
         amplitude_ratio_tol: Shallow-valley merge threshold as fraction of local max
-                             (default: 0.4 — merge valleys shallower than 40% of local peak)
+                             (default: 0.4 — merge valleys shallower than 40% of local peak).
+                             Pass None to disable shallow-valley merging.
+        min_syllable_dur: Minimum valley-to-valley span to emit a syllable, in seconds
+                          (default: 0.05).
+        merge_valley_tol: Time tolerance for merging nearby valleys, in seconds
+                          (default: 0.05).
+        min_amplitude_threshold: Minimum peak amplitude as a fraction of the max
+                                 envelope amplitude (default: 0.0 = off). Suppresses
+                                 low-amplitude spurious peaks such as sonorant-onset
+                                 bumps (e.g. the [l] in "clever"); ~0.08–0.1 removes
+                                 those without affecting real syllable nuclei.
+        lookahead: Billauer look-ahead in samples (default: None = auto from
+                   min_syllable_dur).
         sample_rate: Target sample rate (default: 16000)
         sad: Optional SAD backend for speech-region chunking (default: None)
         add_utterance_boundaries: Insert boundary valleys at region onset/offset so the
@@ -65,11 +84,16 @@ class SBSPeakdetectSegmenter(PeakdetectSegmenter):
     """
 
     REFERENCE = (
-        "Vázquez, H. J. (in preparation). "
-        "University of Pennsylvania doctoral dissertation. "
-        "Baseline configuration: SBS envelope (pivot_freq=3000 Hz, "
-        "smoothing_window=70 ms at 100 Hz) + Billauer peak detection "
-        "(delta=0.01, max_syllable_dur=0.4 s, amplitude_ratio_tol=0.4)."
+        "findsylls SBS baseline. "
+        'SBS envelope: Liberman, M. (2020, Feb 24). "Syllables." Language Log. '
+        "https://languagelog.ldc.upenn.edu/nll/?p=46144 "
+        "(sum of spectral energy below 3 kHz minus sum above 3 kHz, smoothed, "
+        "peak-picked). "
+        "Peak detection: Billauer, E. peakdet: Peak detection using MATLAB. "
+        "http://billauer.co.il/peakdet.html. "
+        "Configuration: SBS envelope (pivot_freq=3000 Hz, smoothing_window=70 ms at "
+        "100 Hz) + Billauer peak detection (delta=0.01, max_syllable_dur=0.4 s, "
+        "amplitude_ratio_tol=0.4)."
     )
 
     def __init__(
@@ -77,8 +101,12 @@ class SBSPeakdetectSegmenter(PeakdetectSegmenter):
         pivot_freq: int = 3000,
         smoothing_window_samples: int = 7,
         delta: float = 0.01,
-        max_syllable_dur: float = 0.4,
-        amplitude_ratio_tol: float = 0.4,
+        max_syllable_dur: Optional[float] = 0.4,
+        amplitude_ratio_tol: Optional[float] = 0.4,
+        min_syllable_dur: float = 0.05,
+        merge_valley_tol: float = 0.05,
+        min_amplitude_threshold: float = 0.0,
+        lookahead: Optional[int] = None,
         sample_rate: int = 16000,
         sad: Optional["BaseSAD"] = None,
         add_utterance_boundaries: bool = True,
@@ -90,8 +118,12 @@ class SBSPeakdetectSegmenter(PeakdetectSegmenter):
                 smoothing_window_samples=smoothing_window_samples,
             ),
             delta=delta,
+            lookahead=lookahead,
+            min_syllable_dur=min_syllable_dur,
             max_syllable_dur=max_syllable_dur,
+            merge_valley_tol=merge_valley_tol,
             amplitude_ratio_tol=amplitude_ratio_tol,
+            min_amplitude_threshold=min_amplitude_threshold,
             sample_rate=sample_rate,
             sad=sad,
             add_utterance_boundaries=add_utterance_boundaries,

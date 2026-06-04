@@ -66,18 +66,18 @@ def test_posthoc_labels_with_file_manifest(tmp_path):
         file_manifest=file_manifest,
         wav_paths=str(tmp_path / "*.wav"),
         textgrid_paths=str(tmp_path / "*.TextGrid"),
-        textgrid_tier_index=0,
+        textgrid_tiers={"syllable": 0},
     )
 
-    assert list(labeled["primary_label"]) == ["aa", "bb"]
+    assert list(labeled["syllable_primary_label"]) == ["aa", "bb"]
     assert labeled["audio_path"].notna().all()
 
     label_manifest = build_label_manifest(labeled, output_path=tmp_path / "label_manifest.csv")
     assert (tmp_path / "label_manifest.csv").exists()
-    assert "primary_label" in label_manifest.columns
+    assert "syllable_primary_label" in label_manifest.columns
 
     joined = join_corpus_manifests(segmentation_manifest, file_manifest=file_manifest, label_manifest=label_manifest)
-    assert joined["primary_label"].notna().all()
+    assert joined["syllable_primary_label"].notna().all()
 
 
 def test_discovery_manifest_and_join(tmp_path):

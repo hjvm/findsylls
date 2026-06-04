@@ -107,25 +107,17 @@ def plot_segmentation_result(
         syll_intervals = parse_textgrid_intervals(row['tg_file'], syll_tier) if syll_tier is not None else None
         word_intervals = parse_textgrid_intervals(row['tg_file'], word_tier) if word_tier is not None else None
         
-        # Determine tier and evaluation type from either single-tier or multi-tier format
-        # Single-tier format: has 'tier_level' column, method names are simple ("nuclei", "boundaries", "spans")
-        # Multi-tier format: no 'tier_level' column, method names are prefixed ("syllable_boundaries", "word_spans")
-        if 'tier_level' in row.index and pd.notna(row.get('tier_level')):
-            # Single-tier format
-            tier_name = row['tier_level']
-            eval_type = method
+        # Determine tier and evaluation type from the (always tier-prefixed)
+        # eval_method name, e.g. "syllable_boundaries" -> ("syllable", "boundaries").
+        if '_' in method and method != 'nuclei':
+            # rsplit handles tier names that themselves contain underscores.
+            parts = method.rsplit('_', 1)
+            tier_name = parts[0] if len(parts) == 2 else 'syllable'
+            eval_type = parts[1] if len(parts) == 2 else method
         else:
-            # Multi-tier format: extract tier from prefixed method name
-            if '_' in method and method != 'nuclei':
-                # Split method like "syllable_boundaries" -> ("syllable", "boundaries")
-                # Use rsplit to handle method names with underscores correctly
-                parts = method.rsplit('_', 1)
-                tier_name = parts[0] if len(parts) == 2 else 'syllable'
-                eval_type = parts[1] if len(parts) == 2 else method
-            else:
-                # Nuclei or unprefixed name
-                tier_name = 'syllable'
-                eval_type = method
+            # Nuclei (no tier prefix).
+            tier_name = 'syllable'
+            eval_type = method
         
         # Map tier name to appropriate intervals
         if tier_name == 'syllable':

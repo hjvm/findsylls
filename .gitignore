@@ -49,3 +49,11 @@ models/
 
 # Reference implementations cloned for parity testing (not part of the package)
 reference_repos/
+
+# Battery / test run outputs
+test_output_baseline/
+test_output_probe/
+test_output_phase4/
+
+# Session working doc (audit + plan notes), not part of the package
+findsylls_session_prompt.md

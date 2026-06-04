@@ -42,11 +42,17 @@ from .embedding import embed_audio, embed_corpus
 from .embedding.storage import save_embeddings, load_embeddings
 
 try:
-    from .discovery import DiscoveryPipeline, save_discovery_pipeline, load_discovery_pipeline
+    from .discovery import (
+        DiscoveryPipeline,
+        save_discovery_pipeline,
+        load_discovery_pipeline,
+        collapse_clusters,
+    )
 except ImportError:
     DiscoveryPipeline = None
     save_discovery_pipeline = None
     load_discovery_pipeline = None
+    collapse_clusters = None
 
 __all__ = [
     "__version__",
@@ -84,6 +90,7 @@ __all__ = [
     "DiscoveryPipeline",
     "save_discovery_pipeline",
     "load_discovery_pipeline",
+    "collapse_clusters",
 ]
 
-__version__ = "3.1.1"
+__version__ = "3.2.0"

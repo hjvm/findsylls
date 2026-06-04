@@ -3,16 +3,18 @@ Dispatch system for segmentation methods.
 
 Provides:
 - Registration system for extensible method discovery
-- Backward-compatible functional API (segment_envelope)
-- New unified API (get_segmenter, segment_audio)
+- Unified API (get_segmenter)
 - Lazy loading for end-to-end models
 """
 
-from typing import Dict, Type, List, Tuple, Optional
-import numpy as np
+from typing import Dict, Type, List
 
-from .base import BaseSegmenter, EnvelopeBasedSegmenter, End2EndSegmenter
-from .peakdetect_segmenter import segment_peakdetect
+from .base import BaseSegmenter
+# Light imports (no torch / no import cycle): used by the module-level peakdetect
+# registry default below. Feature-based factories keep their imports lazy inside
+# _register_feature_methods because they pull heavy/optional extractor deps.
+from .peakdetect_segmenter import PeakdetectSegmenter
+from ..envelope.base import EnvelopeComputer
 
 
 # Registry for segmentation methods
@@ -36,6 +38,27 @@ _SEGMENTER_ALIASES: Dict[str, str] = {
 # Global cache for segmenter instances (keyed by method + kwargs hash)
 # This allows model reuse across multiple files, critical for neural segmenters like Sylber
 _SEGMENTER_CACHE: Dict[str, BaseSegmenter] = {}
+
+
+def _kwarg_key(value) -> str:
+    """Deterministic cache-key fragment for a get_segmenter kwarg value.
+
+    Value types (str/int/float/bool/None) and nested dict/list/tuple containers
+    use a content repr so equal configs share a cache entry reproducibly. Object
+    instances (feature extractors, SAD backends, envelope computers) key by
+    identity, so a reused instance hits the cache while distinct instances do not
+    collide.
+    """
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return repr(value)
+    if isinstance(value, dict):
+        items = sorted(value.items(), key=lambda kv: repr(kv[0]))
+        return "{" + ",".join(f"{k!r}:{_kwarg_key(v)}" for k, v in items) + "}"
+    if isinstance(value, tuple):
+        return "(" + ",".join(_kwarg_key(v) for v in value) + ")"
+    if isinstance(value, list):
+        return "[" + ",".join(_kwarg_key(v) for v in value) + "]"
+    return f"<{type(value).__name__}@{id(value)}>"
 
 
 def register_segmenter(name: str, segmenter_class: Type[BaseSegmenter]) -> None:
@@ -115,19 +138,14 @@ def get_segmenter(method: str, cache: bool = True, **kwargs) -> BaseSegmenter:
     if not cache:
         return segmenter_class(**kwargs)
     
-    # Create cache key from method + sorted kwargs
-    # This ensures same parameters = same cached instance
-    cache_key_parts = [method]
-    for k in sorted(kwargs.keys()):
-        v = kwargs[k]
-        # Handle unhashable types by converting to string
-        try:
-            cache_key_parts.append(f"{k}={hash(v)}")
-        except TypeError:
-            # Fallback for unhashable types (dicts, lists, etc.)
-            cache_key_parts.append(f"{k}={str(v)}")
-    
-    cache_key = "|".join(cache_key_parts)
+    # Create cache key from method + sorted kwargs. Value types use a
+    # deterministic content repr; object instances (extractors, SAD backends,
+    # envelope computers) key by identity so a *reused* instance hits the cache
+    # while distinct instances stay separate. The cache is per-process and is
+    # meant to be released at workflow boundaries (see clear_segmenter_cache).
+    cache_key = "|".join(
+        [method] + [f"{k}={_kwarg_key(kwargs[k])}" for k in sorted(kwargs.keys())]
+    )
     
     # Return cached instance if available
     if cache_key in _SEGMENTER_CACHE:
@@ -140,36 +158,39 @@ def get_segmenter(method: str, cache: bool = True, **kwargs) -> BaseSegmenter:
     return instance
 
 
+class _ConfigurableEnvelope(EnvelopeComputer):
+    """Envelope computer that defers to a named ``get_amplitude_envelope`` method.
+
+    Used by the ``peakdetect`` registry default so the dispatch caller can pick an
+    envelope method (``hilbert``, ``sbs``, ``theta``, ...) by name. The
+    ``get_amplitude_envelope`` import stays lazy to avoid eagerly pulling envelope
+    backends at module load.
+    """
+
+    def __init__(self, method: str = "hilbert", env_kwargs=None):
+        self.method = method
+        self.env_kwargs = env_kwargs or {}
+
+    def compute(self, audio, sr):
+        from ..envelope.dispatch import get_amplitude_envelope
+        return get_amplitude_envelope(audio, sr, method=self.method, **self.env_kwargs)
+
+
+class DefaultPeakdetectSegmenter(PeakdetectSegmenter):
+    """``peakdetect`` registry default: a PeakdetectSegmenter whose envelope is
+    selected by name via ``envelope_method`` / ``envelope_kwargs``."""
+
+    def __init__(self, envelope_method: str = "hilbert", envelope_kwargs=None, **kwargs):
+        super().__init__(_ConfigurableEnvelope(envelope_method, envelope_kwargs), **kwargs)
+
+
 def _register_envelope_methods():
     """Register all envelope-based methods."""
     global _ENVELOPE_METHODS_REGISTERED
     if not _ENVELOPE_METHODS_REGISTERED:
-        from .peakdetect_segmenter import PeakdetectSegmenter
-        from ..envelope.base import EnvelopeComputer
-        
-        # Create a default envelope computer for backward compatibility
-        class DefaultHilbertEnvelope(EnvelopeComputer):
-            def compute(self, audio, sr):
-                from ..envelope.dispatch import get_amplitude_envelope
-                return get_amplitude_envelope(audio, sr, method='hilbert')
-        
-        # Register with default envelope for dispatch compatibility
-        class DefaultPeakdetectSegmenter(PeakdetectSegmenter):
-            def __init__(self, envelope_method='hilbert', envelope_kwargs=None, **kwargs):
-                # Create appropriate envelope computer based on method
-                class ConfigurableEnvelope(EnvelopeComputer):
-                    def __init__(self, method, env_kwargs):
-                        self.method = method
-                        self.env_kwargs = env_kwargs or {}
-                    def compute(self, audio, sr):
-                        from ..envelope.dispatch import get_amplitude_envelope
-                        return get_amplitude_envelope(audio, sr, method=self.method, **self.env_kwargs)
-                
-                envelope_computer = ConfigurableEnvelope(envelope_method, envelope_kwargs)
-                super().__init__(envelope_computer, **kwargs)
-        
         register_segmenter('peakdetect', DefaultPeakdetectSegmenter)
 
+        # cls_attention pulls neural feature deps; import lazily.
         from .cls_attention import CLSAttentionSegmenter
         register_segmenter('cls_attention', CLSAttentionSegmenter)
         _ENVELOPE_METHODS_REGISTERED = True
@@ -201,76 +222,34 @@ def _register_feature_methods() -> None:
     _FEATURE_METHODS_REGISTERED = True
 
 
-# Backward-compatible functional API
-def segment_envelope(
-    envelope: np.ndarray, 
-    times: np.ndarray, 
-    method: str = "peakdetect", 
-    **kwargs
-) -> List[Tuple[float, float, float]]:
-    """
-    Segment from pre-computed envelope (backward compatible).
-    
-    This is the original functional API. For new code, consider using
-    get_segmenter() for more flexibility.
-    
-    Args:
-        envelope: Amplitude envelope
-        times: Time array (seconds)
-        method: Segmentation method name
-        **kwargs: Method-specific parameters
-    
-    Returns:
-        List of (start, nucleus, end) tuples
-    
-    Raises:
-        ValueError: If method requires raw audio (end-to-end methods)
-    """
-    if method is None:
-        method = "peakdetect"
-
-    method = normalize_segmenter_name(method)
-    
-    # For backward compatibility, call original function directly if peakdetect
-    if method == "peakdetect":
-        return segment_peakdetect(envelope=envelope, times=times, **kwargs)
-    
-    # Otherwise use new system
-    try:
-        segmenter = get_segmenter(method, **kwargs)
-    except ValueError:
-        raise ValueError(f"Unsupported segmentation method: {method}")
-    
-    # Check if segmenter can accept envelope
-    if isinstance(segmenter, EnvelopeBasedSegmenter):
-        return segmenter.segment(envelope=envelope, times=times, **kwargs)
-    elif isinstance(segmenter, End2EndSegmenter):
-        raise ValueError(
-            f"Method '{method}' is an end-to-end neural method that requires raw audio. "
-            f"Use segment_audio() from pipeline module instead."
-        )
-    else:
-        raise ValueError(f"Unknown segmenter type: {type(segmenter)}")
-
 
 def clear_segmenter_cache():
     """
-    Clear the global segmenter cache.
-    
-    Useful for freeing memory or forcing model reloads.
-    In most cases, you don't need to call this - cached models
-    are automatically reused efficiently.
-    
+    Release and clear the global segmenter cache.
+
+    Calls ``.release()`` on each cached segmenter that provides one (freeing
+    neural model memory) before dropping references. The cache is per-process and
+    reuses model instances across files for efficiency; call this at workflow
+    boundaries (end of a corpus pass / batch stage) to bound its lifetime, per
+    the project's memory-safety policy.
+
     Example:
         >>> # Process many files with cached models
         >>> for file in files:
         ...     segmenter = get_segmenter('sylber', cache=True)
         ...     segments = segmenter.segment(audio, sr)
-        >>> 
-        >>> # Optionally clear cache when done
+        >>>
+        >>> # Release models when the workflow is done
         >>> clear_segmenter_cache()
     """
     global _SEGMENTER_CACHE
+    for segmenter in _SEGMENTER_CACHE.values():
+        release = getattr(segmenter, "release", None)
+        if callable(release):
+            try:
+                release()
+            except Exception:
+                pass
     _SEGMENTER_CACHE.clear()
 
 

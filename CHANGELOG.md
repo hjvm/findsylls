@@ -2,6 +2,72 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.2.0] - 2026-06-03
+
+> Consolidates unreleased work since 3.0.1 (the 3.0.2 / 3.1.x series was
+> published from `__version__` without CHANGELOG entries) and adds the changes
+> below.
+
+### Breaking Changes
+- `attach_textgrid_labels_to_manifest()` now takes a required
+  `textgrid_tiers: Dict[str, int]` (same shape as `evaluate_segmentation`'s
+  `tiers`) instead of `textgrid_tier_index: int = 0`. Per-tier label columns are
+  written with a `{tier_name}_` prefix (`{tier}_tg_labels`,
+  `{tier}_labels_concat`, `{tier}_primary_label`, `{tier}_primary_label_peak`,
+  `{tier}_primary_label_max_overlap`); `textgrid_path`, `label_attached`, and
+  `label_source` remain shared and unprefixed. The private `_row_textgrid_labels`
+  return key `tier_labels_concat` was renamed to `labels_concat`. Downstream
+  callers must pass an explicit `label_column` (e.g. `syllable_primary_label`)
+  to `compute_discovery_label_metrics` / `export_discovery_label_artifacts`.
+- `evaluate_segmentation()` now always emits tier-prefixed boundary/span keys
+  (`{tier}_boundaries`, `{tier}_spans`) even when a single non-phone tier is
+  evaluated. Previously a single tier produced generic `boundaries`/`spans` keys
+  plus a `tier_level` metadata field, so the same syllable metric changed name
+  depending on whether other tiers were evaluated alongside it (splitting
+  `groupby('eval_method')` in cross-corpus aggregation). The `tier_level` key is
+  removed; `flatten_results`/`plot_segmentation` no longer reference it.
+
+### Added
+- `SBSPeakdetectSegmenter` now exposes the lower-level peakdetect controls that
+  were previously only reachable via the generic `PeakdetectSegmenter`:
+  `min_syllable_dur`, `merge_valley_tol`, `min_amplitude_threshold`, and
+  `lookahead`. In particular `min_amplitude_threshold` (fraction of max envelope)
+  suppresses low-amplitude spurious peaks such as sonorant-onset bumps (e.g. the
+  [l] in "clever") without affecting real nuclei — ~0.08–0.1 is typical.
+  `max_syllable_dur` and `amplitude_ratio_tol` are now typed `Optional` (pass
+  `None` to disable the cap / shallow-valley merge). Defaults unchanged.
+- First-class `sad=` parameter on `segment_audio`, `run_evaluation`, `embed_audio`,
+  `embed_corpus`, and `FindSyllsOrchestrator.discover_corpus` (accepts `'energy'`,
+  `'silero'`, or a `BaseSAD` instance), restricting segmentation to detected speech
+  regions. Previously reachable only via `segmentation_kwargs={'sad': ...}`; an
+  explicit `segmentation_kwargs['sad']` still takes precedence.
+- `collapse_clusters(embeddings, labels, n_clusters)` in `discovery/collapse.py`:
+  collapses K fine-grained cluster labels into n_clusters coarse labels via
+  agglomerative clustering on per-cluster centroids. Returns `(new_labels,
+  centroids, centroid_map)` for test-time nearest-centroid assignment. Exported
+  from `findsylls.discovery` and the top-level `findsylls` package.
+
+### Removed
+- `segmentation.dispatch.segment_envelope()` — unused backward-compat functional
+  API (no callers, not exported). Use `get_segmenter(...)` /
+  `EnvelopeBasedSegmenter.segment(envelope=, times=)`.
+
+### Fixed
+- `clear_segmenter_cache()` now calls `.release()` on cached segmenters before
+  clearing (frees neural model memory), and is invoked at `embed_corpus` /
+  `embed_corpus_to_storage` workflow boundaries so the per-process segmenter
+  cache no longer outlives a corpus pass. `get_segmenter`'s cache key is now
+  deterministic for value/dict/list kwargs (object instances still key by
+  identity, preserving shared-instance reuse).
+- Corrected the false "[DEPRECATED]/backward compatibility" labels on
+  `get_amplitude_envelope` (it is the supported functional wrapper over
+  `get_envelope_computer`).
+- `scripts/findsylls_test_battery.py`: corrected `EVAL_TIERS` to match the
+  TIMIT `*_syllabified.TextGrid` tier order `{phone: 0, word: 1, syllable: 2}`
+  (was inverted, silently scoring nuclei against the syllable tier), and added
+  `tg_suffix_to_strip="_syllabified"` to the label-attachment call so syllable
+  labels actually attach.
+
 ## [3.0.1] - 2026-05-04
 
 ### Removed

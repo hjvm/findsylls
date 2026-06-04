@@ -2,6 +2,7 @@
 
 from .agglomerative import AgglomerativeDiscovery
 from .base import BaseDiscoveryModel
+from .collapse import collapse_clusters
 from .dispatch import (
     get_discovery_model,
     list_discovery_models,
@@ -22,6 +23,7 @@ __all__ = [
     "KMeansDiscovery",
     "MiniBatchKMeansDiscovery",
     "AgglomerativeDiscovery",
+    "collapse_clusters",
     "DiscoveryPipeline",
     "DiscoveryResult",
     "compute_intrinsic_fit_metrics",
