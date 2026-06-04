@@ -4,9 +4,9 @@ message: If you use this software, please cite it using the metadata below.
 authors:
   - given-names: Héctor Javier
     family-names: Vázquez Martínez
-version: 3.0.1
+version: 3.2.0
 license: MIT
-date-released: 2026-03-30
+date-released: 2026-06-04
 repository-code: https://github.com/hjvm/findsylls
 keywords:
   - speech
