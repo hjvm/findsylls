@@ -28,6 +28,14 @@ All notable changes to this project will be documented in this file.
   removed; `flatten_results`/`plot_segmentation` no longer reference it.
 
 ### Added
+- `SBSPeakdetectSegmenter` now exposes the lower-level peakdetect controls that
+  were previously only reachable via the generic `PeakdetectSegmenter`:
+  `min_syllable_dur`, `merge_valley_tol`, `min_amplitude_threshold`, and
+  `lookahead`. In particular `min_amplitude_threshold` (fraction of max envelope)
+  suppresses low-amplitude spurious peaks such as sonorant-onset bumps (e.g. the
+  [l] in "clever") without affecting real nuclei — ~0.08–0.1 is typical.
+  `max_syllable_dur` and `amplitude_ratio_tol` are now typed `Optional` (pass
+  `None` to disable the cap / shallow-valley merge). Defaults unchanged.
 - First-class `sad=` parameter on `segment_audio`, `run_evaluation`, `embed_audio`,
   `embed_corpus`, and `FindSyllsOrchestrator.discover_corpus` (accepts `'energy'`,
   `'silero'`, or a `BaseSAD` instance), restricting segmentation to detected speech
