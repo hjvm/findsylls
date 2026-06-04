@@ -54,7 +54,9 @@ def _kwarg_key(value) -> str:
     if isinstance(value, dict):
         items = sorted(value.items(), key=lambda kv: repr(kv[0]))
         return "{" + ",".join(f"{k!r}:{_kwarg_key(v)}" for k, v in items) + "}"
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, tuple):
+        return "(" + ",".join(_kwarg_key(v) for v in value) + ")"
+    if isinstance(value, list):
         return "[" + ",".join(_kwarg_key(v) for v in value) + "]"
     return f"<{type(value).__name__}@{id(value)}>"
 

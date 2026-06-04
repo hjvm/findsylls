@@ -212,7 +212,9 @@ def attach_textgrid_labels_to_manifest(
         else:
             for tier_name in textgrid_tiers:
                 for key, default in _PER_TIER_LABEL_DEFAULTS.items():
-                    row_dict.setdefault(f"{tier_name}_{key}", default)
+                    # Copy mutable defaults so rows never share the same list object.
+                    seed = list(default) if isinstance(default, list) else default
+                    row_dict.setdefault(f"{tier_name}_{key}", seed)
             row_dict.setdefault("textgrid_path", "")
             row_dict.setdefault("label_attached", False)
             row_dict.setdefault("label_source", "")

@@ -83,3 +83,14 @@ def test_collapse_clusters_rejects_too_many():
     embeddings, labels = _toy_two_stage()
     with pytest.raises(ValueError):
         collapse_clusters(embeddings, labels, n_clusters=10)
+
+
+def test_collapse_clusters_rejects_noncontiguous_labels():
+    import numpy as np
+    from findsylls.discovery import collapse_clusters
+
+    embeddings, labels = _toy_two_stage()
+    labels = labels.copy()
+    labels[labels == 9] = 11  # introduce a gap: labels are now {0..8, 11}, not 0..K-1
+    with pytest.raises(ValueError):
+        collapse_clusters(embeddings, labels, n_clusters=3)

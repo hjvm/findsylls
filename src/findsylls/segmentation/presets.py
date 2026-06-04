@@ -35,8 +35,8 @@ class SBSPeakdetectSegmenter(PeakdetectSegmenter):
     """
     Spectral Band Subtraction envelope + peak detection (findsylls baseline).
 
-    A baseline configuration combining the SBS envelope (Liberman 2022) with
-    Billauer peak detection (Billauer 2009), as benchmarked in the findsylls
+    A baseline configuration combining the SBS envelope (Liberman 2020) with
+    Billauer peak detection (Billauer), as benchmarked in the findsylls
     toolkit paper. SBS is used here as a baseline; it is not a novel method.
     - Envelope: SBS (low-frequency minus high-frequency spectral energy, pivot at 3000 Hz,
                 Hamming-smoothed at 70 ms / 7 samples at 100 Hz frame rate)

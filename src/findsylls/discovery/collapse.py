@@ -32,8 +32,8 @@ def collapse_clusters(
     embeddings : np.ndarray, shape (N, D)
         Per-sample embeddings.
     labels : np.ndarray, shape (N,)
-        First-stage (fine-grained) cluster ids. Assumed to be 0-indexed integers,
-        consistent with ``DiscoveryPipeline.predict()`` output.
+        First-stage (fine-grained) cluster ids. Must be the contiguous 0-indexed
+        integers ``0..K-1`` that ``DiscoveryPipeline.predict()`` produces.
     n_clusters : int
         Number of coarse output classes. Must be smaller than the number of
         unique fine labels.
@@ -55,7 +55,7 @@ def collapse_clusters(
     ------
     ValueError
         If ``n_clusters >= K`` (collapsing to the same count or more is
-        meaningless).
+        meaningless), or if ``labels`` are not the contiguous integers ``0..K-1``.
     ImportError
         If scikit-learn is not installed.
     """
@@ -75,6 +75,14 @@ def collapse_clusters(
         raise ValueError(
             f"n_clusters ({n_clusters}) must be smaller than the number of unique fine "
             f"labels ({n_fine}); collapsing to the same count or more is meaningless."
+        )
+    # The label-value -> coarse-id map (centroid_map) is indexed by label value,
+    # so fine labels must be the contiguous 0..K-1 integers DiscoveryPipeline
+    # produces. Fail loudly on gaps rather than IndexError / silently mis-map.
+    if not np.array_equal(unique_labels, np.arange(n_fine)):
+        raise ValueError(
+            "collapse_clusters requires fine labels to be contiguous 0-indexed "
+            f"integers (0..{n_fine - 1}); got {unique_labels.tolist()}."
         )
 
     # Stage-1 centroid per fine label (ordered by label value).
