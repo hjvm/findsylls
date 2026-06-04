@@ -8,7 +8,7 @@ use the same alignment rules as the main evaluation pipeline.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 import json
 
 import numpy as np
