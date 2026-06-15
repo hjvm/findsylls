@@ -9,7 +9,7 @@ from .feature_coherence import (
     SSMEnvelopeComputer,
 )
 from .cls_attention import CLSAttentionEnvelope
-from .greedy_cosine import GreedyCosineEnvelope
+from .local_cosine import LocalCosineEnvelope, GreedyCosineEnvelope
 from .mincut import MinCutEnvelope
 
 __all__ = [
@@ -23,7 +23,8 @@ __all__ = [
     "SBSEnvelope",
     "LowpassEnvelope",
     "SSMEnvelopeComputer",
-    "GreedyCosineEnvelope",
+    "LocalCosineEnvelope",
+    "GreedyCosineEnvelope",  # backward-compatible alias of LocalCosineEnvelope
     "MinCutEnvelope",
     "CLSAttentionEnvelope",
 ]

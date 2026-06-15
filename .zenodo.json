@@ -1,0 +1,24 @@
+{
+  "title": "findsylls: A Language-Agnostic Toolkit for Syllable-Level Speech Tokenization and Embedding",
+  "description": "findsylls is a modular, language-agnostic Python toolkit for unsupervised syllable-level speech segmentation, embedding extraction, and multi-granular evaluation. It unifies classical envelope-based detectors (e.g. spectral band subtraction, theta oscillator) and end-to-end self-supervised syllabifiers (e.g. Sylber, VG-HuBERT) under a common interface, allowing their components to be recombined for controlled comparisons of representations, algorithms, and token rates.",
+  "upload_type": "software",
+  "license": "MIT",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Vázquez Martínez, Héctor Javier",
+      "affiliation": "University of Pennsylvania",
+      "orcid": "0009-0004-5200-553X"
+    }
+  ],
+  "keywords": [
+    "speech",
+    "syllable",
+    "segmentation",
+    "audio",
+    "phonetics",
+    "prosody",
+    "unsupervised",
+    "self-supervised learning"
+  ]
+}

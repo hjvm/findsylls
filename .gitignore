@@ -57,3 +57,8 @@ test_output_phase4/
 
 # Session working doc (audit + plan notes), not part of the package
 findsylls_session_prompt.md
+
+# Paper reproduction harness (kept local, not shipped)
+scripts/replicate_paper_table2.py
+scripts/build_table2.py
+scripts/wait_and_build.py
