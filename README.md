@@ -3,6 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/findsylls.svg)](https://pypi.org/project/findsylls/)
 [![Python versions](https://img.shields.io/pypi/pyversions/findsylls.svg)](https://pypi.org/project/findsylls/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20707804.svg)](https://doi.org/10.5281/zenodo.20707804)
 
 Language-agnostic toolkit for unsupervised syllable-level speech segmentation, embedding extraction, and evaluation.
 

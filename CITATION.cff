@@ -8,6 +8,7 @@ version: 3.2.1
 license: MIT
 date-released: 2026-06-15
 repository-code: https://github.com/hjvm/findsylls
+doi: 10.5281/zenodo.20707804  # Zenodo concept DOI (all versions)
 keywords:
   - speech
   - syllable
