@@ -12,7 +12,7 @@ from .lowpass import LowpassEnvelope, compute_lowpass_envelope
 from .sbs import SBSEnvelope, spectral_band_subtraction
 from .theta import ThetaEnvelope, theta_oscillator_envelope
 from .cls_attention import CLSAttentionEnvelope
-from .greedy_cosine import GreedyCosineEnvelope
+from .local_cosine import LocalCosineEnvelope
 from .mincut import MinCutEnvelope
 import numpy as np
 from ..features import get_extractor
@@ -93,15 +93,9 @@ def get_envelope_computer(method: str = "sbs", **kwargs) -> EnvelopeComputer:
         feature_extractor = _resolve_feature_extractor(kwargs)
         env_kwargs = _pop_pseudo_envelope_kwargs(
             kwargs,
-            {
-                "norm_threshold",
-                "merge_threshold",
-                "aggregation_method",
-                "normalize",
-                "smooth_frames",
-            },
+            {"window_size", "normalize"},
         )
-        return GreedyCosineEnvelope(feature_extractor=feature_extractor, **env_kwargs)
+        return LocalCosineEnvelope(feature_extractor=feature_extractor, **env_kwargs)
     elif method == "mincut":
         feature_extractor = _resolve_feature_extractor(kwargs)
         env_kwargs = _pop_pseudo_envelope_kwargs(
@@ -159,15 +153,9 @@ def get_amplitude_envelope(waveform: np.ndarray, sr: int, method: str = "sbs", *
         feature_extractor = _resolve_feature_extractor(kwargs)
         env_kwargs = _pop_pseudo_envelope_kwargs(
             kwargs,
-            {
-                "norm_threshold",
-                "merge_threshold",
-                "aggregation_method",
-                "normalize",
-                "smooth_frames",
-            },
+            {"window_size", "normalize"},
         )
-        return GreedyCosineEnvelope(feature_extractor=feature_extractor, **env_kwargs).compute(waveform, sr)
+        return LocalCosineEnvelope(feature_extractor=feature_extractor, **env_kwargs).compute(waveform, sr)
     elif method == "mincut":
         feature_extractor = _resolve_feature_extractor(kwargs)
         env_kwargs = _pop_pseudo_envelope_kwargs(

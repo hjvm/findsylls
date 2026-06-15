@@ -4,13 +4,12 @@ Feature-Based Envelope Computers
 Computes amplitude envelopes based on feature similarities.
 This bridges feature-based and envelope-based segmentation approaches.
 
-Two envelope types are provided:
-1. SSMEnvelopeComputer: Global coherence from full self-similarity matrix
-2. (Removed) GreedyCosineEnvelope legacy local-prototype path
-
-Note: GreedyCosineEnvelope and CLSAttentionEnvelope now live in dedicated modules
-(`envelope/greedy_cosine.py`, `envelope/cls_attention.py`) to enforce canonical
-algorithm-derived aggregation policies.
+SSMEnvelopeComputer (here) reduces the full self-similarity matrix to a
+per-frame *global* coherence trace (row-wise mean). Its *local* counterpart,
+GreedyCosineEnvelope (local-window cosine coherence), lives in
+`envelope/greedy_cosine.py`; CLSAttentionEnvelope lives in
+`envelope/cls_attention.py`. Both are independent reductions of the shared
+feature substrate, distinct from their segmenters' internal decision logic.
 """
 
 import numpy as np
