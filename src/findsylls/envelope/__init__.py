@@ -13,6 +13,7 @@ from .cls_attention import CLSAttentionEnvelope
 from .local_cosine import LocalCosineEnvelope, GreedyCosineEnvelope
 from .mincut import MinCutEnvelope
 from .periodicity import PeriodicityEnvelope
+from .product import ProductEnvelope, ThresholdGate
 
 __all__ = [
     "get_amplitude_envelope",  # Functional wrapper over get_envelope_computer
@@ -31,4 +32,6 @@ __all__ = [
     "MinCutEnvelope",
     "CLSAttentionEnvelope",
     "PeriodicityEnvelope",
+    "ProductEnvelope",
+    "ThresholdGate",
 ]
