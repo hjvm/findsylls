@@ -14,6 +14,7 @@ from .theta import ThetaEnvelope, theta_oscillator_envelope
 from .cls_attention import CLSAttentionEnvelope
 from .local_cosine import LocalCosineEnvelope
 from .mincut import MinCutEnvelope
+from .periodicity import PeriodicityEnvelope
 import numpy as np
 from ..features import get_extractor
 
@@ -103,6 +104,8 @@ def get_envelope_computer(method: str = "sbs", **kwargs) -> EnvelopeComputer:
             {"threshold", "s", "min_hop", "aggregation_method", "normalize", "invert"},
         )
         return MinCutEnvelope(feature_extractor=feature_extractor, **env_kwargs)
+    elif method == "periodicity":
+        return PeriodicityEnvelope(**kwargs)
     elif method == "gammatone":
         raise ValueError(
             "'gammatone' is not a standalone envelope method. "
@@ -113,7 +116,7 @@ def get_envelope_computer(method: str = "sbs", **kwargs) -> EnvelopeComputer:
         raise ValueError(
             f"Unsupported envelope method: {method}. "
             f"Available: 'rms', 'hilbert', 'lowpass', 'sbs', 'theta', "
-            f"'cls_attention', 'greedy_cosine', 'mincut'"
+            f"'cls_attention', 'greedy_cosine', 'mincut', 'periodicity'"
         )
 
 
@@ -163,6 +166,8 @@ def get_amplitude_envelope(waveform: np.ndarray, sr: int, method: str = "sbs", *
             {"threshold", "s", "min_hop", "aggregation_method", "normalize", "invert"},
         )
         return MinCutEnvelope(feature_extractor=feature_extractor, **env_kwargs).compute(waveform, sr)
+    elif method == "periodicity":
+        return PeriodicityEnvelope(**kwargs).compute(waveform, sr)
     elif method == "gammatone":
         raise ValueError(
             "'gammatone' is not a standalone envelope method. "
