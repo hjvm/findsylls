@@ -56,6 +56,18 @@ def test_energy_periodicity_real_audio(composition, ptd):
         assert s <= p <= e
 
 
+@pytest.mark.skipif(not SAMPLE.exists(), reason="sample wav missing")
+def test_tuned_defaults_give_plausible_syllable_rate():
+    """Pins the TIMIT-tuned defaults (pt=0.3, floor=-30, ptd=4.5): the detected
+    nucleus rate on real speech must stay in the plausible syllable range."""
+    from findsylls.audio.utils import load_audio
+
+    audio, sr = load_audio(str(SAMPLE))
+    out = EnergyPeriodicitySegmenter().segment(audio, sr)
+    rate = len(out) / (len(audio) / sr)
+    assert 1.5 <= rate <= 8.0, f"nucleus rate {rate:.1f}/s outside plausible range"
+
+
 def test_bad_composition_raises():
     with pytest.raises(ValueError):
         EnergyPeriodicitySegmenter(composition="bogus")
