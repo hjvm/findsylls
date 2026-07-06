@@ -1,57 +1,82 @@
-"""Tests for multiplicative envelope gating (ProductEnvelope, ThresholdGate)."""
+"""Tests for multiplicative envelope gating (ProductEnvelope, ThresholdGate).
+
+Real audio only (test_samples/): all properties are checked on envelopes
+computed from actual speech.
+"""
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
+import pytest
 
-from findsylls.envelope import ProductEnvelope, ThresholdGate
-from findsylls.envelope.base import EnvelopeComputer
+from findsylls.audio.utils import load_audio
+from findsylls.envelope import (
+    PeriodicityEnvelope,
+    ProductEnvelope,
+    RMSEnvelope,
+    ThresholdGate,
+)
 
+SAMPLE = Path(__file__).resolve().parent.parent / "test_samples" / "SP20_117.wav"
 
-class _Const(EnvelopeComputer):
-    """Fixed (envelope, times) for deterministic testing on a chosen grid."""
-
-    def __init__(self, env, times):
-        self.env = np.asarray(env, float)
-        self.times = np.asarray(times, float)
-
-    def compute(self, audio, sr):
-        return self.env, self.times
-
-
-def test_threshold_gate_masks():
-    inner = _Const([0.2, 0.8, 0.9, 0.1], [0, 1, 2, 3])
-    mask, t = ThresholdGate(inner, 0.5).compute(None, 16000)
-    assert list(mask) == [0.0, 1.0, 1.0, 0.0]
-    assert list(t) == [0, 1, 2, 3]
+pytestmark = pytest.mark.skipif(not SAMPLE.exists(), reason="sample wav missing")
 
 
-def test_product_gates_primary():
-    energy = _Const([1.0, 2.0, 3.0, 4.0], [0, 1, 2, 3])
-    gate = ThresholdGate(_Const([0.0, 1.0, 1.0, 0.0], [0, 1, 2, 3]), 0.5)
-    out, t = ProductEnvelope([energy, gate]).compute(None, 16000)
-    assert list(out) == [0.0, 2.0, 3.0, 0.0]
-    assert list(t) == [0, 1, 2, 3]
+@pytest.fixture(scope="module")
+def audio():
+    return load_audio(str(SAMPLE))
 
 
-def test_weight_zero_disables_signal():
-    energy = _Const([1.0, 2.0, 3.0], [0, 1, 2])
-    gate = ThresholdGate(_Const([0.0, 0.0, 1.0], [0, 1, 2]), 0.5)
-    # weight 0 on the gate => env ** 0 == 1 => gate ignored, energy passes through
-    out, _ = ProductEnvelope([energy, gate], weights=[1.0, 0.0]).compute(None, 16000)
-    assert list(out) == [1.0, 2.0, 3.0]
+def test_threshold_gate_is_exact_mask(audio):
+    a, sr = audio
+    per = PeriodicityEnvelope()
+    env, times = per.compute(a, sr)
+    mask, mtimes = ThresholdGate(per, 0.7).compute(a, sr)
+    assert np.array_equal(mtimes, times)
+    assert np.array_equal(mask, (np.asarray(env, float) >= 0.7).astype(np.float32))
+    assert 0 < mask.sum() < mask.size  # real speech has voiced AND unvoiced frames
+
+
+def test_product_gates_primary_same_grid(audio):
+    """RMS(400/160) and periodicity(400/160) share a hop; gating must zero
+    exactly the sub-threshold frames and preserve the rest."""
+    a, sr = audio
+    rms = RMSEnvelope(frame_length=400, hop_length=160)
+    gate = ThresholdGate(PeriodicityEnvelope(), 0.7)
+    prim, ptimes = rms.compute(a, sr)
+    mask, mtimes = gate.compute(a, sr)
+    out, otimes = ProductEnvelope([rms, gate]).compute(a, sr)
+
+    assert np.array_equal(otimes, ptimes)  # primary defines the grid
+    aligned = np.interp(ptimes, mtimes, mask)
+    expected = np.asarray(prim, float) * aligned
+    np.testing.assert_allclose(out, expected, rtol=1e-5, atol=1e-7)
+    assert (out == 0).any() and (out > 0).any()
+
+
+def test_product_resamples_onto_primary_grid(audio):
+    """Components on different grids (RMS hop 256 vs periodicity hop 160) must
+    be interpolated onto the primary's grid."""
+    a, sr = audio
+    rms = RMSEnvelope(frame_length=1024, hop_length=256)
+    gate = ThresholdGate(PeriodicityEnvelope(), 0.7)
+    prim, ptimes = rms.compute(a, sr)
+    out, otimes = ProductEnvelope([rms, gate]).compute(a, sr)
+    assert out.shape == prim.shape
+    assert np.array_equal(otimes, ptimes)
+    assert np.all(out <= np.asarray(prim, float) + 1e-7)  # 0/1 gate only attenuates
+
+
+def test_weight_zero_disables_signal(audio):
+    a, sr = audio
+    rms = RMSEnvelope(frame_length=400, hop_length=160)
+    gate = ThresholdGate(PeriodicityEnvelope(), 0.7)
+    prim, _ = rms.compute(a, sr)
+    out, _ = ProductEnvelope([rms, gate], weights=[1.0, 0.0]).compute(a, sr)
+    np.testing.assert_allclose(out, np.asarray(prim, np.float32), rtol=1e-6)
 
 
 def test_weight_length_mismatch_raises():
-    import pytest
     with pytest.raises(ValueError):
-        ProductEnvelope([_Const([1.0], [0])], weights=[1.0, 2.0])
-
-
-def test_product_resamples_onto_primary_grid():
-    # gate lives on a coarser grid; must be interpolated onto energy's grid
-    energy = _Const([1.0, 1.0, 1.0, 1.0, 1.0], [0.0, 0.5, 1.0, 1.5, 2.0])
-    gate = _Const([0.0, 1.0, 0.0], [0.0, 1.0, 2.0])
-    out, t = ProductEnvelope([energy, gate]).compute(None, 16000)
-    assert len(out) == 5  # primary grid preserved
-    assert out[2] == 1.0  # gate peak at t=1.0
-    assert out[0] == 0.0 and out[4] == 0.0
+        ProductEnvelope([RMSEnvelope()], weights=[1.0, 2.0])

@@ -14,6 +14,7 @@ from .local_cosine import LocalCosineEnvelope, GreedyCosineEnvelope
 from .mincut import MinCutEnvelope
 from .periodicity import PeriodicityEnvelope
 from .product import ProductEnvelope, ThresholdGate
+from .rhythm import RhythmEnvelope, fit_rhythm_sinusoid
 
 __all__ = [
     "get_amplitude_envelope",  # Functional wrapper over get_envelope_computer
@@ -34,4 +35,6 @@ __all__ = [
     "PeriodicityEnvelope",
     "ProductEnvelope",
     "ThresholdGate",
+    "RhythmEnvelope",
+    "fit_rhythm_sinusoid",
 ]
