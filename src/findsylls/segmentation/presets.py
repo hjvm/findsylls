@@ -524,6 +524,101 @@ class EnergyPeriodicitySegmenter(BaseSegmenter):
         return self._engine._segment(audio, sr)
 
 
+class RhythmGuidedSegmenter(PeakdetectSegmenter):
+    """
+    Speech-rhythm guided syllable nuclei detection (Zhang & Glass 2009).
+
+    Composition: ERB/gammatone Hilbert-sum envelope (the paper's E(t)) weighted
+    by a batch-fitted rhythm sinusoid (RhythmEnvelope), gated by a periodicity
+    voicing mask (the paper's pitch verification, §2.3, using findsylls's own
+    PeriodicityEnvelope instead of an external pitch tracker), then peak-picked.
+
+    Divergences from the paper (documented, all justified by the paper itself):
+    - Whole-utterance batch rhythm fit instead of the iterative left-to-right
+      loop (§3.1 reports "very similar results" for the batch fit).
+    - Soft multiplicative rhythm weight instead of the hard one-peak-per-
+      predicted-interval rule; the weight's floor keeps off-beat peaks damped
+      rather than killed, mirroring the permissive 1.5-cycle search window.
+    - Periodicity-threshold voicing instead of an ESPS pitch tracker.
+
+    Performance (TIMIT, findsylls nuclei harness, 50 ms window): defaults give
+    nuclei F1 ~85 (60-file tune 85.3, 200-file held-out 85.2), beating the SBS
+    (84.1) and Theta (81.4) baselines on the same harness. The paper reports
+    best-case F1 92.1 on its own vowel-center harness with per-corpus parameter
+    selection; absolute numbers are not comparable across harnesses. Note: on
+    this harness the rhythm weighting barely separates from the nRG ablation
+    (~85.0), unlike the paper's +3.5 — likely because the batch fit + soft
+    weight is gentler than the iterative hard-interval rule.
+
+    Reference:
+        Zhang, Y., & Glass, J. R. (2009). "Speech rhythm guided syllable nuclei
+        detection." ICASSP 2009. https://doi.org/10.1109/ICASSP.2009.4960454
+
+    Args:
+        delta: Billauer peak/valley depth on the [0,1]-normalized weighted
+            envelope (default 0.2, tuned on TIMIT).
+        rhythm_floor: minimum rhythm weight in [0,1] (default 0.3; 1.0 disables
+            rhythm weighting entirely — the paper's "nRG" ablation).
+        voicing_threshold: periodicity gate for pitch verification (default 0.4;
+            None disables).
+        first_pass_delta: peakdetect delta for the first-pass peaks the rhythm
+            sinusoid is fitted to (default 0.05).
+        period_range: rhythm period bounds in seconds (default (0.1, 0.5)).
+        min_syllable_dur: minimum segment duration in seconds (default 0.1,
+            tuned on TIMIT).
+        sample_rate, sad, add_utterance_boundaries: as in BaseSegmenter.
+
+    Example:
+        >>> segmenter = RhythmGuidedSegmenter()
+        >>> segments = segmenter.segment(audio, sr=16000)
+        >>> segmenter.cite()
+    """
+
+    REFERENCE = (
+        "Zhang, Y., & Glass, J. R. (2009). "
+        '"Speech rhythm guided syllable nuclei detection." '
+        "ICASSP 2009, 3797-3800. https://doi.org/10.1109/ICASSP.2009.4960454"
+    )
+
+    def __init__(
+        self,
+        delta: float = 0.2,
+        rhythm_floor: float = 0.3,
+        voicing_threshold: Optional[float] = 0.4,
+        first_pass_delta: float = 0.05,
+        period_range: Tuple[float, float] = (0.1, 0.5),
+        min_syllable_dur: float = 0.1,
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
+    ):
+        from ..envelope import (
+            PeriodicityEnvelope,
+            ProductEnvelope,
+            RhythmEnvelope,
+            ThresholdGate,
+        )
+
+        primary = RhythmEnvelope(delta=first_pass_delta, period_range=period_range,
+                                 floor=rhythm_floor, output="weighted", normalize=True)
+        if voicing_threshold is not None:
+            envelope = ProductEnvelope(
+                [primary, ThresholdGate(PeriodicityEnvelope(), voicing_threshold)]
+            )
+        else:
+            envelope = primary
+        super().__init__(
+            envelope_computer=envelope,
+            delta=delta,
+            min_syllable_dur=min_syllable_dur,
+            sample_rate=sample_rate,
+            sad=sad,
+            add_utterance_boundaries=add_utterance_boundaries,
+        )
+        self.rhythm_floor = rhythm_floor
+        self.voicing_threshold = voicing_threshold
+
+
 # ---------------------------------------------------------------------------
 # Discovery helpers
 # ---------------------------------------------------------------------------
@@ -532,6 +627,7 @@ _SEGMENTER_PRESETS = {
     "sbs_peakdetect": SBSPeakdetectSegmenter,
     "theta_oscillator": ThetaOscillatorSegmenter,
     "energy_periodicity": EnergyPeriodicitySegmenter,
+    "rhythm_guided": RhythmGuidedSegmenter,
     "sylber": SylberSegmenter,
     "vg_hubert_mincut": VGHubertMinCutSegmenter,
     "vg_hubert_cls": VGHubertCLSSegmenter,
