@@ -51,26 +51,36 @@ class ProductEnvelope(EnvelopeComputer):
 
     Args:
         components: envelope computers; component[0] is the primary.
+        weights: per-component exponents (weighted geometric product,
+            ``prod_i env_i ** w_i``). Weight 1 (default) is full influence, 0
+            disables a signal (``env ** 0 == 1``), and larger values sharpen it.
+            Length must match ``components``. Exponent weighting (not scalar)
+            because scaling a factor by a constant leaves the argmax unchanged.
 
     Note: multiplicative gating assumes a NON-NEGATIVE primary (linear energy,
     Hilbert-sum). On a dB/log primary (values <= 0) a 0/1 gate inverts -- the
     suppressed frames become 0, i.e. the maximum. For a dB primary, restrict the
-    picker to the gated region instead of multiplying (slice-and-pick).
+    picker to the gated region instead of multiplying (slice-and-pick). Fractional
+    weights on a negative-valued component are also ill-defined (nan).
     """
 
-    def __init__(self, components: List[EnvelopeComputer]):
+    def __init__(self, components: List[EnvelopeComputer], weights=None):
         if not components:
             raise ValueError("ProductEnvelope needs at least one component.")
+        if weights is not None and len(weights) != len(components):
+            raise ValueError("weights must match the number of components.")
         self.components = components
+        self.weights = [1.0] * len(components) if weights is None else list(weights)
 
     def compute(self, audio: np.ndarray, sr: int):
         primary, times = self.components[0].compute(audio, sr)
         times = np.asarray(times, dtype=float)
-        out = np.asarray(primary, dtype=float).copy()
-        for comp in self.components[1:]:
+        out = np.asarray(primary, dtype=float) ** self.weights[0]
+        for comp, w in zip(self.components[1:], self.weights[1:]):
             env, ctimes = comp.compute(audio, sr)
-            out *= np.interp(times, np.asarray(ctimes, dtype=float),
-                             np.asarray(env, dtype=float))
+            aligned = np.interp(times, np.asarray(ctimes, dtype=float),
+                                np.asarray(env, dtype=float))
+            out = out * (aligned ** w)
         return out.astype(np.float32), times
 
 

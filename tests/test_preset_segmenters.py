@@ -64,7 +64,8 @@ def test_list_segmenter_presets_contains_envelope_presets():
 
 def test_list_segmenter_presets_contains_all_expected_keys():
     from findsylls.segmentation.presets import list_segmenter_presets
-    expected = {"sbs_peakdetect", "theta_oscillator", "sylber", "vg_hubert_mincut", "vg_hubert_cls"}
+    expected = {"sbs_peakdetect", "theta_oscillator", "energy_periodicity",
+                "sylber", "vg_hubert_mincut", "vg_hubert_cls"}
     assert set(list_segmenter_presets().keys()) == expected
 
 

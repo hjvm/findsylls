@@ -19,9 +19,12 @@ Available presets:
 - VGHubertCLSSegmenter: VG-HuBERT with CLS attention (Peng et al. 2022)
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
+from .base import BaseSegmenter
 from .cls_attention import CLSAttentionSegmenter
+from .convexhull import ConvexHullSegmenter
+from .gated import RegionGatedSegmenter
 from .greedy_cosine import GreedyCosineSegmenter
 from .mincut import MinCutSegmenter
 from .peakdetect_segmenter import PeakdetectSegmenter
@@ -409,6 +412,102 @@ class VGHubertCLSSegmenter(CLSAttentionSegmenter):
         self.device = device
 
 
+class EnergyPeriodicitySegmenter(BaseSegmenter):
+    """
+    Energy + periodicity syllable-nucleus detection (Xie & Niyogi 2006).
+
+    Two-stage: periodicity gates *where* voiced nuclei live (periodic regions),
+    and energy picks the nucleus (the energy peak) within each region. The gate
+    is ``periodicity > periodicity_threshold``; nuclei are convex-hull peaks of
+    the energy.
+
+    Two composition strategies (``composition=``) let you compare the faithful
+    two-stage design against the multiplicative-gating reframe:
+
+    - ``"slice"`` (default, faithful to Xie §2.3): periodicity gate proposes
+      regions; the dB "relevant energy" is sliced per region and convex-hulled
+      independently (peak-to-dip 4.5 dB). This is what the paper does.
+    - ``"product"``: nuclei = convex-hull peaks of ``linear_energy * gate``, a
+      single pass. Simpler, but flattens the per-region hulls and requires
+      linear energy (a dB primary would invert under a 0/1 gate). ``weights``
+      tunes each signal's influence (weighted geometric product; default equal).
+
+    Reference:
+        Xie, Z., & Niyogi, P. (2006). "Robust Acoustic-Based Syllable Detection."
+        Interspeech 2006.
+
+    Args:
+        composition: "slice" (default) or "product".
+        periodicity_threshold: absolute periodicity gate (default 0.7; vowels
+            ~0.9, obstruents ~0.49, so ~0.7 admits voiced nuclei).
+        energy_peak_to_dip: convex-hull dip threshold for picking energy peaks.
+            Default 4.5 (dB, Xie) for "slice"; for "product" the energy is linear
+            so pass a linear-domain value.
+        weights: per-signal exponents for "product" composition,
+            ``[w_energy, w_gate]`` (default equal weight 1).
+        frame_length, hop_length: energy/periodicity framing (default 400/160 =
+            25/10 ms at 16 kHz, Xie Table 1).
+        min_syllable_dur: minimum nucleus-segment duration in seconds.
+        sample_rate, sad, add_utterance_boundaries: as in BaseSegmenter.
+
+    Example:
+        >>> seg = EnergyPeriodicitySegmenter(composition="slice")
+        >>> segments = seg.segment(audio, sr=16000)
+        >>> seg.cite()
+    """
+
+    REFERENCE = (
+        "Xie, Z., & Niyogi, P. (2006). "
+        '"Robust Acoustic-Based Syllable Detection." '
+        "Interspeech 2006. https://doi.org/10.21437/Interspeech.2006-440"
+    )
+
+    def __init__(
+        self,
+        composition: str = "slice",
+        periodicity_threshold: float = 0.7,
+        energy_peak_to_dip: float = 4.5,
+        weights: Optional[list] = None,
+        frame_length: int = 400,
+        hop_length: int = 160,
+        min_syllable_dur: float = 0.05,
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
+    ):
+        super().__init__(sample_rate=sample_rate, sad=sad,
+                         add_utterance_boundaries=add_utterance_boundaries)
+        from ..envelope import PeriodicityEnvelope, RMSEnvelope, ProductEnvelope, ThresholdGate
+
+        if composition not in ("slice", "product"):
+            raise ValueError(f"composition must be 'slice' or 'product', got {composition!r}")
+        self.composition = composition
+        self.periodicity_threshold = periodicity_threshold
+        self.energy_peak_to_dip = energy_peak_to_dip
+
+        gate = ThresholdGate(PeriodicityEnvelope(), periodicity_threshold)
+        if composition == "slice":
+            energy = RMSEnvelope(frame_length=frame_length, hop_length=hop_length,
+                                 db=True, reference="max")
+            self._engine = RegionGatedSegmenter(
+                primary_env=energy, gate_env=gate, gate_on=0.5,
+                peak_to_dip=energy_peak_to_dip, min_syllable_dur=min_syllable_dur,
+                sample_rate=sample_rate,
+            )
+        else:
+            energy = RMSEnvelope(frame_length=frame_length, hop_length=hop_length, db=False)
+            product = ProductEnvelope([energy, gate], weights=weights)
+            self._engine = ConvexHullSegmenter(
+                envelope_computer=product,
+                peak_to_dip=energy_peak_to_dip, min_syllable_dur=min_syllable_dur,
+                sample_rate=sample_rate,
+            )
+
+    def _segment(self, audio, sr) -> List[Tuple[float, float, float]]:
+        # Outer BaseSegmenter.segment() applies SAD; engine runs SAD-free.
+        return self._engine._segment(audio, sr)
+
+
 # ---------------------------------------------------------------------------
 # Discovery helpers
 # ---------------------------------------------------------------------------
@@ -416,6 +515,7 @@ class VGHubertCLSSegmenter(CLSAttentionSegmenter):
 _SEGMENTER_PRESETS = {
     "sbs_peakdetect": SBSPeakdetectSegmenter,
     "theta_oscillator": ThetaOscillatorSegmenter,
+    "energy_periodicity": EnergyPeriodicitySegmenter,
     "sylber": SylberSegmenter,
     "vg_hubert_mincut": VGHubertMinCutSegmenter,
     "vg_hubert_cls": VGHubertCLSSegmenter,

@@ -18,6 +18,7 @@ from .convexhull import (
     segment_convexhull,
     ConvexHullSegmenter,
 )
+from .gated import RegionGatedSegmenter
 from .mincut import (
     MinCutSegmenter,
     min_cut,
@@ -33,6 +34,7 @@ from .cls_attention import CLSAttentionSegmenter
 from .presets import (
     SBSPeakdetectSegmenter,
     ThetaOscillatorSegmenter,
+    EnergyPeriodicitySegmenter,
     SylberSegmenter,
     VGHubertMinCutSegmenter,
     VGHubertCLSSegmenter,
@@ -61,6 +63,7 @@ __all__ = [
     "PeakdetectSegmenter",
     "segment_convexhull",
     "ConvexHullSegmenter",
+    "RegionGatedSegmenter",
     # Feature-based (Phase 5)
     "MinCutSegmenter",
     "GreedyCosineSegmenter",
@@ -76,6 +79,7 @@ __all__ = [
     # Preset configurations
     "SBSPeakdetectSegmenter",
     "ThetaOscillatorSegmenter",
+    "EnergyPeriodicitySegmenter",
     "SylberSegmenter",
     "VGHubertMinCutSegmenter",
     "VGHubertCLSSegmenter",

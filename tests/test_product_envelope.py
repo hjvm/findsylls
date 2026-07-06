@@ -33,6 +33,20 @@ def test_product_gates_primary():
     assert list(t) == [0, 1, 2, 3]
 
 
+def test_weight_zero_disables_signal():
+    energy = _Const([1.0, 2.0, 3.0], [0, 1, 2])
+    gate = ThresholdGate(_Const([0.0, 0.0, 1.0], [0, 1, 2]), 0.5)
+    # weight 0 on the gate => env ** 0 == 1 => gate ignored, energy passes through
+    out, _ = ProductEnvelope([energy, gate], weights=[1.0, 0.0]).compute(None, 16000)
+    assert list(out) == [1.0, 2.0, 3.0]
+
+
+def test_weight_length_mismatch_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        ProductEnvelope([_Const([1.0], [0])], weights=[1.0, 2.0])
+
+
 def test_product_resamples_onto_primary_grid():
     # gate lives on a coarser grid; must be interpolated onto energy's grid
     energy = _Const([1.0, 1.0, 1.0, 1.0, 1.0], [0.0, 0.5, 1.0, 1.5, 2.0])
