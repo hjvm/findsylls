@@ -14,6 +14,10 @@ from .peakdetect_segmenter import (
     segment_peakdetect,
     PeakdetectSegmenter,
 )
+from .convexhull import (
+    segment_convexhull,
+    ConvexHullSegmenter,
+)
 from .mincut import (
     MinCutSegmenter,
     min_cut,
@@ -55,6 +59,8 @@ __all__ = [
     "End2EndSegmenter",
     # Envelope-based (Phase 5)
     "PeakdetectSegmenter",
+    "segment_convexhull",
+    "ConvexHullSegmenter",
     # Feature-based (Phase 5)
     "MinCutSegmenter",
     "GreedyCosineSegmenter",
