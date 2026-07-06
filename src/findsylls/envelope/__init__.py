@@ -3,6 +3,7 @@ from .base import EnvelopeComputer, PseudoEnvelope
 from .rms import RMSEnvelope
 from .hilbert import HilbertEnvelope
 from .theta import ThetaEnvelope
+from .gammatone import GammatoneEnvelope
 from .sbs import SBSEnvelope
 from .lowpass import LowpassEnvelope
 from .feature_coherence import (
@@ -21,6 +22,7 @@ __all__ = [
     "RMSEnvelope",
     "HilbertEnvelope",
     "ThetaEnvelope",
+    "GammatoneEnvelope",
     "SBSEnvelope",
     "LowpassEnvelope",
     "SSMEnvelopeComputer",
