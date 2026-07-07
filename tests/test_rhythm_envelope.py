@@ -78,6 +78,17 @@ def test_weighted_output_is_normalized(audio):
     assert env.max() == pytest.approx(1.0, abs=1e-6)
 
 
+def test_rhythm_dispatch(audio):
+    """'rhythm' is a registered envelope method (blueprint extension recipe)."""
+    from findsylls.envelope import get_envelope_computer, get_amplitude_envelope
+
+    a, sr = audio
+    comp = get_envelope_computer("rhythm")
+    assert isinstance(comp, RhythmEnvelope)
+    env, times = get_amplitude_envelope(a, sr, method="rhythm")
+    assert env.shape == times.shape and env.size > 0
+
+
 def test_bad_output_raises():
     with pytest.raises(ValueError):
         RhythmEnvelope(output="bogus")
