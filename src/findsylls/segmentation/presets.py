@@ -23,7 +23,6 @@ from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from .base import BaseSegmenter
 from .cls_attention import CLSAttentionSegmenter
-from .convexhull import ConvexHullSegmenter
 from .greedy_cosine import GreedyCosineSegmenter
 from .mincut import MinCutSegmenter
 from .peakdetect_segmenter import PeakdetectSegmenter
@@ -442,26 +441,17 @@ class EnergyPeriodicitySegmenter(BaseSegmenter):
     error, so this preset uses the absolute-threshold half of their criterion,
     which reproduces the paper. Convex-hull still does the nucleus picking.
 
-    ``composition="product"`` swaps the two stages for the multiplicative-gating
-    reframe (``ConvexHullSegmenter(ProductEnvelope([linear_energy, gate]))``) for
-    comparison; it is decisively worse (product can't split within a region on
-    linear energy and emits spurious segments in gated-out stretches).
-
     Reference:
         Xie, Z., & Niyogi, P. (2006). "Robust Acoustic-Based Syllable Detection."
         Interspeech 2006.
 
     Args:
-        composition: "slice" (default, faithful) or "product" (comparison).
         periodicity_threshold: min periodicity for a frame to be voiced
             (default 0.4; vowels ~0.9, obstruents ~0.49).
         energy_floor_db: min relative energy (dB below max) for a frame to join a
             region -- Xie's stop-closure floor (default -30.0; None disables).
         energy_peak_to_dip: convex-hull dip threshold for picking energy peaks
-            within a region. Default 4.5 (dB, Xie Table 1) for "slice"; for
-            "product" the energy is linear so pass a linear-domain value.
-        weights: per-signal exponents for "product" composition,
-            ``[w_energy, w_gate]`` (default equal weight 1).
+            within a region (default 4.5 dB, Xie Table 1).
         frame_length, hop_length: shared periodicity/energy framing (default
             400/160 = 25/10 ms at 16 kHz, Xie Table 1).
         min_syllable_dur: minimum nucleus-segment duration in seconds.
@@ -481,11 +471,9 @@ class EnergyPeriodicitySegmenter(BaseSegmenter):
 
     def __init__(
         self,
-        composition: str = "slice",
         periodicity_threshold: float = 0.4,
         energy_floor_db: Optional[float] = -30.0,
         energy_peak_to_dip: float = 4.5,
-        weights: Optional[list] = None,
         frame_length: int = 400,
         hop_length: int = 160,
         min_syllable_dur: float = 0.05,
@@ -495,12 +483,9 @@ class EnergyPeriodicitySegmenter(BaseSegmenter):
     ):
         super().__init__(sample_rate=sample_rate, sad=sad,
                          add_utterance_boundaries=add_utterance_boundaries)
-        from ..envelope import PeriodicityEnvelope, RMSEnvelope, ProductEnvelope, ThresholdGate
+        from ..envelope import PeriodicityEnvelope, RMSEnvelope
         from .threshold import ThresholdSegmenter
 
-        if composition not in ("slice", "product"):
-            raise ValueError(f"composition must be 'slice' or 'product', got {composition!r}")
-        self.composition = composition
         self.periodicity_threshold = periodicity_threshold
         self.energy_floor_db = energy_floor_db
         self.energy_peak_to_dip = energy_peak_to_dip
@@ -519,26 +504,8 @@ class EnergyPeriodicitySegmenter(BaseSegmenter):
         self._loud = (ThresholdSegmenter(self._energy_db, threshold=energy_floor_db)
                       if energy_floor_db is not None else None)
 
-        if composition == "product":
-            energy = RMSEnvelope(frame_length=frame_length, hop_length=hop_length,
-                                 db=False, center=False)
-            gate = ThresholdGate(
-                PeriodicityEnvelope(frame_size=frame_length, frame_shift=hop_length),
-                periodicity_threshold,
-            )
-            if energy_floor_db is not None:
-                gate = ProductEnvelope([gate, ThresholdGate(self._energy_db, energy_floor_db)])
-            self._product_engine = ConvexHullSegmenter(
-                envelope_computer=ProductEnvelope([energy, gate], weights=weights),
-                peak_to_dip=energy_peak_to_dip, min_syllable_dur=min_syllable_dur,
-                sample_rate=sample_rate,
-            )
-
     def _segment(self, audio, sr) -> List[Tuple[float, float, float]]:
         # Outer BaseSegmenter.segment() applies SAD; this runs SAD-free.
-        if self.composition == "product":
-            return self._product_engine._segment(audio, sr)
-
         import numpy as np
         from .threshold import segment_threshold
         from .convexhull import segment_convexhull
@@ -575,10 +542,10 @@ class RhythmGuidedSegmenter(PeakdetectSegmenter):
     """
     Speech-rhythm guided syllable nuclei detection (Zhang & Glass 2009).
 
-    Composition: ERB/gammatone Hilbert-sum envelope (the paper's E(t)) weighted
-    by a batch-fitted rhythm sinusoid (RhythmEnvelope), gated by a periodicity
-    voicing mask (the paper's pitch verification, §2.3, using findsylls's own
-    PeriodicityEnvelope instead of an external pitch tracker), then peak-picked.
+    Composition: peakdetect over the ERB/gammatone Hilbert-sum envelope (the
+    paper's E(t)) weighted by a batch-fitted rhythm sinusoid (RhythmEnvelope),
+    then Zhang's pitch verification as a post-removal filter -- peaks landing in
+    unvoiced regions (periodicity < ``voicing_threshold``) are dropped (§2.3).
 
     Divergences from the paper (documented, all justified by the paper itself):
     - Whole-utterance batch rhythm fit instead of the iterative left-to-right
@@ -586,7 +553,8 @@ class RhythmGuidedSegmenter(PeakdetectSegmenter):
     - Soft multiplicative rhythm weight instead of the hard one-peak-per-
       predicted-interval rule; the weight's floor keeps off-beat peaks damped
       rather than killed, mirroring the permissive 1.5-cycle search window.
-    - Periodicity-threshold voicing instead of an ESPS pitch tracker.
+    - Periodicity-threshold voicing instead of an ESPS pitch tracker (but as a
+      post-removal filter, matching the paper's operation, not a pre-gate).
 
     Performance (TIMIT, findsylls nuclei harness, 50 ms window): defaults give
     nuclei F1 ~85 (60-file tune 85.3, 200-file held-out 85.2), beating the SBS
@@ -639,23 +607,12 @@ class RhythmGuidedSegmenter(PeakdetectSegmenter):
         sad: Optional["BaseSAD"] = None,
         add_utterance_boundaries: bool = True,
     ):
-        from ..envelope import (
-            PeriodicityEnvelope,
-            ProductEnvelope,
-            RhythmEnvelope,
-            ThresholdGate,
-        )
+        from ..envelope import PeriodicityEnvelope, RhythmEnvelope
 
-        primary = RhythmEnvelope(delta=first_pass_delta, period_range=period_range,
-                                 floor=rhythm_floor, output="weighted", normalize=True)
-        if voicing_threshold is not None:
-            envelope = ProductEnvelope(
-                [primary, ThresholdGate(PeriodicityEnvelope(), voicing_threshold)]
-            )
-        else:
-            envelope = primary
         super().__init__(
-            envelope_computer=envelope,
+            envelope_computer=RhythmEnvelope(
+                delta=first_pass_delta, period_range=period_range,
+                floor=rhythm_floor, output="weighted", normalize=True),
             delta=delta,
             min_syllable_dur=min_syllable_dur,
             sample_rate=sample_rate,
@@ -664,6 +621,20 @@ class RhythmGuidedSegmenter(PeakdetectSegmenter):
         )
         self.rhythm_floor = rhythm_floor
         self.voicing_threshold = voicing_threshold
+        # Pitch verification (§2.3) as a post-removal filter, not a pre-gate.
+        self._periodicity = PeriodicityEnvelope()
+
+    def _segment(self, audio, sr) -> List[Tuple[float, float, float]]:
+        import numpy as np
+        segments = super()._segment(audio, sr)   # peakdetect on rhythm-weighted energy
+        if self.voicing_threshold is None or not segments:
+            return segments
+        # Post-removal pitch verification: drop peaks in unvoiced regions.
+        per, per_t = self._periodicity.compute(audio, sr)
+        per = np.asarray(per, float)
+        per_t = np.asarray(per_t, float)
+        return [(s, p, e) for s, p, e in segments
+                if per[np.argmin(np.abs(per_t - p))] >= self.voicing_threshold]
 
 
 # ---------------------------------------------------------------------------

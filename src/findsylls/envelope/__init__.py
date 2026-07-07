@@ -13,7 +13,6 @@ from .cls_attention import CLSAttentionEnvelope
 from .local_cosine import LocalCosineEnvelope, GreedyCosineEnvelope
 from .mincut import MinCutEnvelope
 from .periodicity import PeriodicityEnvelope
-from .product import ProductEnvelope, ThresholdGate
 from .rhythm import RhythmEnvelope, fit_rhythm_sinusoid
 
 __all__ = [
@@ -33,8 +32,6 @@ __all__ = [
     "MinCutEnvelope",
     "CLSAttentionEnvelope",
     "PeriodicityEnvelope",
-    "ProductEnvelope",
-    "ThresholdGate",
     "RhythmEnvelope",
     "fit_rhythm_sinusoid",
 ]

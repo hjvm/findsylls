@@ -58,23 +58,8 @@ def test_stricter_threshold_is_subset_like(audio):
     assert len(strict) <= len(loose)
 
 
-@pytest.mark.parametrize("composition,ptd", [("slice", 4.5), ("product", 0.05)])
-def test_both_compositions_run(audio, composition, ptd):
-    a, sr = audio
-    seg = EnergyPeriodicitySegmenter(composition=composition, energy_peak_to_dip=ptd)
-    out = seg.segment(a, sr)
-    assert len(out) > 0
-    for s, p, e in out:
-        assert s <= p <= e
-
-
 def test_tuned_defaults_give_plausible_syllable_rate(audio):
     a, sr = audio
     out = EnergyPeriodicitySegmenter().segment(a, sr)
     rate = len(out) / (len(a) / sr)
     assert 1.5 <= rate <= 8.0, f"nucleus rate {rate:.1f}/s outside plausible range"
-
-
-def test_bad_composition_raises():
-    with pytest.raises(ValueError):
-        EnergyPeriodicitySegmenter(composition="bogus")

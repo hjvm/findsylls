@@ -16,8 +16,8 @@ left-to-right, but reports (Section 3.1) that a whole-utterance batch fit gives
 The weight is ``(1 + sin(k1*t + 2*pi*k2)) / 2`` in [0,1], lifted by ``floor``
 so off-beat peaks are damped rather than killed (the paper's search window --
 1.5 rhythm cycles past the last aligned crest -- is likewise permissive rather
-than a hard gate). Multiply it into the base envelope via ``ProductEnvelope``
-or use ``output="weighted"`` to get ``base * weight`` in one pass.
+than a hard gate). Use ``output="weighted"`` to get ``base * weight`` in one
+pass (a primary envelope), or ``output="weight"`` for the bare weight.
 """
 
 from __future__ import annotations
