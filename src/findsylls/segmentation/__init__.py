@@ -18,7 +18,10 @@ from .convexhull import (
     segment_convexhull,
     ConvexHullSegmenter,
 )
-from .gated import RegionGatedSegmenter
+from .threshold import (
+    segment_threshold,
+    ThresholdSegmenter,
+)
 from .mincut import (
     MinCutSegmenter,
     min_cut,
@@ -64,7 +67,8 @@ __all__ = [
     "PeakdetectSegmenter",
     "segment_convexhull",
     "ConvexHullSegmenter",
-    "RegionGatedSegmenter",
+    "segment_threshold",
+    "ThresholdSegmenter",
     # Feature-based (Phase 5)
     "MinCutSegmenter",
     "GreedyCosineSegmenter",

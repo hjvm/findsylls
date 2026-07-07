@@ -9,7 +9,8 @@ from findsylls.presets import resolve_preset
 
 def test_segmenters_are_algorithm_only():
     segmenters = set(list_segmenters())
-    assert segmenters == {"peakdetect", "convexhull", "cls_attention", "mincut", "greedy_cosine"}
+    assert segmenters == {"peakdetect", "convexhull", "threshold",
+                          "cls_attention", "mincut", "greedy_cosine"}
 
 
 def test_preset_registry_is_separate():

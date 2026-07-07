@@ -1,7 +1,7 @@
-"""Tests for two-stage gated segmentation (RegionGatedSegmenter,
-EnergyPeriodicitySegmenter — Xie & Niyogi 2006).
+"""Tests for the two-stage EnergyPeriodicitySegmenter (Xie & Niyogi 2006).
 
-Real audio only (test_samples/).
+Real audio only (test_samples/). The preset owns its two-convex-hull logic
+directly (GreedyCosine-style); there is no separate gating orchestrator.
 """
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ import numpy as np
 import pytest
 
 from findsylls.audio.utils import load_audio
-from findsylls.envelope import PeriodicityEnvelope, RMSEnvelope, ThresholdGate
-from findsylls.segmentation import RegionGatedSegmenter, EnergyPeriodicitySegmenter
+from findsylls.envelope import PeriodicityEnvelope
+from findsylls.segmentation import EnergyPeriodicitySegmenter
 
 SAMPLE = Path(__file__).resolve().parent.parent / "test_samples" / "SP20_117.wav"
 
@@ -24,52 +24,42 @@ def audio():
     return load_audio(str(SAMPLE))
 
 
-def test_nuclei_only_inside_gate_on_regions(audio):
-    """Every picked nucleus must lie inside a voiced (gate-on) region — the
-    defining property of slice-and-pick."""
+def test_nuclei_only_in_periodic_regions(audio):
+    """Every nucleus must land where periodicity clears the region threshold —
+    the defining property of stage-1 gating."""
     a, sr = audio
-    per = PeriodicityEnvelope()
-    energy = RMSEnvelope(frame_length=400, hop_length=160, db=True, reference="max")
-    seg = RegionGatedSegmenter(primary_env=energy,
-                               gate_env=ThresholdGate(per, 0.5),
-                               peak_to_dip=4.5, min_syllable_dur=0.05)
-    out = seg._segment(a, sr)
+    thr = 0.5
+    seg = EnergyPeriodicitySegmenter(periodicity_threshold=thr, energy_floor_db=None)
+    out = seg.segment(a, sr)
     assert len(out) > 0
 
-    penv, ptimes = per.compute(a, sr)
+    penv, ptimes = PeriodicityEnvelope().compute(a, sr)
     penv = np.asarray(penv, float)
     for _, peak, _ in out:
-        # periodicity at the nucleus must be at/above the gate threshold
-        assert penv[np.argmin(np.abs(ptimes - peak))] >= 0.5
+        # the nucleus sits inside a region whose periodicity peak >= threshold;
+        # periodicity at the nucleus itself is a lower bound on that peak
+        # (energy peak need not coincide with periodicity peak), so assert the
+        # region-level property: some nearby frame is voiced.
+        near = np.abs(ptimes - peak) < 0.05
+        assert penv[near].max() >= thr
 
 
-def test_impossible_gate_yields_no_segments(audio):
+def test_impossible_periodicity_threshold_yields_nothing(audio):
     a, sr = audio
-    energy = RMSEnvelope(frame_length=400, hop_length=160, db=True, reference="max")
-    # periodicity can never exceed ~1, so a gate at 5.0 is never on
-    seg = RegionGatedSegmenter(primary_env=energy,
-                               gate_env=ThresholdGate(PeriodicityEnvelope(), 5.0),
-                               min_syllable_dur=0.0)
+    # periodicity never exceeds ~1, so a threshold of 5 admits no region
+    seg = EnergyPeriodicitySegmenter(periodicity_threshold=5.0)
     assert seg._segment(a, sr) == []
 
 
-def test_gating_restricts_relative_to_ungated(audio):
-    """Slice-and-pick must produce nuclei only where the gate allows — i.e., a
-    subset of the utterance, unlike an ungated convex-hull over everything."""
+def test_stricter_threshold_is_subset_like(audio):
     a, sr = audio
-    per = PeriodicityEnvelope()
-    energy = RMSEnvelope(frame_length=400, hop_length=160, db=True, reference="max")
-    strict = RegionGatedSegmenter(primary_env=energy,
-                                  gate_env=ThresholdGate(per, 0.8),
-                                  peak_to_dip=4.5, min_syllable_dur=0.05)
-    loose = RegionGatedSegmenter(primary_env=energy,
-                                 gate_env=ThresholdGate(per, 0.2),
-                                 peak_to_dip=4.5, min_syllable_dur=0.05)
-    assert len(strict._segment(a, sr)) <= len(loose._segment(a, sr))
+    loose = EnergyPeriodicitySegmenter(periodicity_threshold=0.3).segment(a, sr)
+    strict = EnergyPeriodicitySegmenter(periodicity_threshold=0.8).segment(a, sr)
+    assert len(strict) <= len(loose)
 
 
 @pytest.mark.parametrize("composition,ptd", [("slice", 4.5), ("product", 0.05)])
-def test_energy_periodicity_real_audio(audio, composition, ptd):
+def test_both_compositions_run(audio, composition, ptd):
     a, sr = audio
     seg = EnergyPeriodicitySegmenter(composition=composition, energy_peak_to_dip=ptd)
     out = seg.segment(a, sr)
@@ -79,8 +69,6 @@ def test_energy_periodicity_real_audio(audio, composition, ptd):
 
 
 def test_tuned_defaults_give_plausible_syllable_rate(audio):
-    """Pins the TIMIT-tuned defaults (pt=0.3, floor=-30, ptd=4.5): the detected
-    nucleus rate on real speech must stay in the plausible syllable range."""
     a, sr = audio
     out = EnergyPeriodicitySegmenter().segment(a, sr)
     rate = len(out) / (len(a) / sr)

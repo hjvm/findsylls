@@ -15,6 +15,7 @@ from .base import BaseSegmenter
 # _register_feature_methods because they pull heavy/optional extractor deps.
 from .peakdetect_segmenter import PeakdetectSegmenter
 from .convexhull import ConvexHullSegmenter
+from .threshold import ThresholdSegmenter
 from ..envelope.base import EnvelopeComputer
 
 
@@ -28,6 +29,7 @@ _FEATURE_METHODS_REGISTERED = False
 _CANONICAL_SEGMENTERS: List[str] = [
     'peakdetect',
     'convexhull',
+    'threshold',
     'cls_attention',
     'mincut',
     'greedy_cosine',
@@ -194,12 +196,21 @@ class DefaultConvexHullSegmenter(ConvexHullSegmenter):
         super().__init__(_ConfigurableEnvelope(envelope_method, envelope_kwargs), **kwargs)
 
 
+class DefaultThresholdSegmenter(ThresholdSegmenter):
+    """``threshold`` registry default: a ThresholdSegmenter whose envelope is
+    selected by name via ``envelope_method`` / ``envelope_kwargs``."""
+
+    def __init__(self, envelope_method: str = "rms", envelope_kwargs=None, **kwargs):
+        super().__init__(_ConfigurableEnvelope(envelope_method, envelope_kwargs), **kwargs)
+
+
 def _register_envelope_methods():
     """Register all envelope-based methods."""
     global _ENVELOPE_METHODS_REGISTERED
     if not _ENVELOPE_METHODS_REGISTERED:
         register_segmenter('peakdetect', DefaultPeakdetectSegmenter)
         register_segmenter('convexhull', DefaultConvexHullSegmenter)
+        register_segmenter('threshold', DefaultThresholdSegmenter)
 
         # cls_attention pulls neural feature deps; import lazily.
         from .cls_attention import CLSAttentionSegmenter

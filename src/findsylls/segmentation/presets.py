@@ -24,7 +24,6 @@ from typing import List, Optional, Tuple, TYPE_CHECKING
 from .base import BaseSegmenter
 from .cls_attention import CLSAttentionSegmenter
 from .convexhull import ConvexHullSegmenter
-from .gated import RegionGatedSegmenter
 from .greedy_cosine import GreedyCosineSegmenter
 from .mincut import MinCutSegmenter
 from .peakdetect_segmenter import PeakdetectSegmenter
@@ -416,52 +415,60 @@ class EnergyPeriodicitySegmenter(BaseSegmenter):
     """
     Energy + periodicity syllable-nucleus detection (Xie & Niyogi 2006).
 
-    Two-stage: periodicity gates *where* voiced nuclei live (periodic regions),
-    and energy picks the nucleus (the energy peak) within each region. The gate
-    is ``periodicity > periodicity_threshold``; nuclei are convex-hull peaks of
-    the energy.
+    Faithful two-stage detector, composed directly from findsylls primitives
+    (like GreedyCosineSegmenter, the whole two-stage logic lives in ``_segment``,
+    not a separate orchestrator). Periodicity and the relevant energy share one
+    frame grid (Xie's energy is ``log gamma(0)`` -- the h=0 term of the same
+    autocovariance as periodicity, on the same frames):
 
-    Two composition strategies (``composition=``) let you compare the faithful
-    two-stage design against the multiplicative-gating reframe:
+    1. **Region finding (Step 1)** — voiced regions are the intersection of two
+       ``ThresholdSegmenter`` masks: "periodic" (periodicity >=
+       ``periodicity_threshold``) AND "loud" (relative energy > ``energy_floor_db``,
+       Xie's stop-closure floor). The AND of the two dense masks. This is the
+       absolute-threshold half of Xie's region criterion (§2.3).
+    2. **Nucleus picking (Step 2)** — within each region, convex-hull on the dB
+       relevant energy (``segment_convexhull``, ``energy_peak_to_dip`` = 4.5 dB,
+       Xie Table 1) picks the energy peak(s) as the nuclei. This is Xie §2.3
+       stage 2 verbatim.
 
-    - ``"slice"`` (default, faithful to Xie §2.3): periodicity gate proposes
-      regions; the dB "relevant energy" is sliced per region and convex-hulled
-      independently (peak-to-dip 4.5 dB). This is what the paper does.
-    - ``"product"``: nuclei = convex-hull peaks of ``linear_energy * gate``, a
-      single pass. Simpler, but flattens the per-region hulls and requires
-      linear energy (a dB primary would invert under a 0/1 gate). ``weights``
-      tunes each signal's influence (weighted geometric product; default equal).
+    Performance (TIMIT, 60-file tune + 200-file held-out, nuclei @ 50 ms):
+    accuracy 85.0 / total error 29.1 vs the paper's 81.6 / 29.3 — matches total
+    error and exceeds recall. (Frame alignment between the two cues is load-
+    bearing: an earlier misaligned energy sat ~4.7 dB off and cost ~2 pts.)
 
-    Tuned on TIMIT (60-file sweep, 200-file held-out validation): nuclei
-    accuracy 84.8 / total error 31.0 vs the paper's 81.6 / 29.3 — at or above
-    the paper's operating point.
+    Note on Step 1: Xie's paper also refines region boundaries with a convex hull
+    on the periodicity trace (peak-to-dip 0.7). Empirically that convex-hull
+    region-finding fragments our periodicity trace and drops ~10 pts of total
+    error, so this preset uses the absolute-threshold half of their criterion,
+    which reproduces the paper. Convex-hull still does the nucleus picking.
+
+    ``composition="product"`` swaps the two stages for the multiplicative-gating
+    reframe (``ConvexHullSegmenter(ProductEnvelope([linear_energy, gate]))``) for
+    comparison; it is decisively worse (product can't split within a region on
+    linear energy and emits spurious segments in gated-out stretches).
 
     Reference:
         Xie, Z., & Niyogi, P. (2006). "Robust Acoustic-Based Syllable Detection."
         Interspeech 2006.
 
     Args:
-        composition: "slice" (default) or "product".
-        periodicity_threshold: absolute periodicity gate (default 0.3). The paper
-            finds periodic regions by convex-hull on periodicity (peak-to-dip
-            0.7); this class uses a simpler absolute threshold gate, whose
-            equivalent operating point is lower (~0.3, tuned on TIMIT).
-        energy_floor_db: drop gate frames whose relative energy is below this
-            many dB (default -30.0; None disables). Plays the role of the
-            paper's stop-closure energy floor (stated as 50 dB below max; our
-            tighter floor compensates for the simpler threshold gate).
-        energy_peak_to_dip: convex-hull dip threshold for picking energy peaks.
-            Default 4.5 (dB, Xie Table 1) for "slice"; for "product" the energy
-            is linear so pass a linear-domain value.
+        composition: "slice" (default, faithful) or "product" (comparison).
+        periodicity_threshold: min periodicity for a frame to be voiced
+            (default 0.4; vowels ~0.9, obstruents ~0.49).
+        energy_floor_db: min relative energy (dB below max) for a frame to join a
+            region -- Xie's stop-closure floor (default -30.0; None disables).
+        energy_peak_to_dip: convex-hull dip threshold for picking energy peaks
+            within a region. Default 4.5 (dB, Xie Table 1) for "slice"; for
+            "product" the energy is linear so pass a linear-domain value.
         weights: per-signal exponents for "product" composition,
             ``[w_energy, w_gate]`` (default equal weight 1).
-        frame_length, hop_length: energy/periodicity framing (default 400/160 =
-            25/10 ms at 16 kHz, Xie Table 1).
+        frame_length, hop_length: shared periodicity/energy framing (default
+            400/160 = 25/10 ms at 16 kHz, Xie Table 1).
         min_syllable_dur: minimum nucleus-segment duration in seconds.
         sample_rate, sad, add_utterance_boundaries: as in BaseSegmenter.
 
     Example:
-        >>> seg = EnergyPeriodicitySegmenter(composition="slice")
+        >>> seg = EnergyPeriodicitySegmenter()
         >>> segments = seg.segment(audio, sr=16000)
         >>> seg.cite()
     """
@@ -475,7 +482,7 @@ class EnergyPeriodicitySegmenter(BaseSegmenter):
     def __init__(
         self,
         composition: str = "slice",
-        periodicity_threshold: float = 0.3,
+        periodicity_threshold: float = 0.4,
         energy_floor_db: Optional[float] = -30.0,
         energy_peak_to_dip: float = 4.5,
         weights: Optional[list] = None,
@@ -489,6 +496,7 @@ class EnergyPeriodicitySegmenter(BaseSegmenter):
         super().__init__(sample_rate=sample_rate, sad=sad,
                          add_utterance_boundaries=add_utterance_boundaries)
         from ..envelope import PeriodicityEnvelope, RMSEnvelope, ProductEnvelope, ThresholdGate
+        from .threshold import ThresholdSegmenter
 
         if composition not in ("slice", "product"):
             raise ValueError(f"composition must be 'slice' or 'product', got {composition!r}")
@@ -496,32 +504,71 @@ class EnergyPeriodicitySegmenter(BaseSegmenter):
         self.periodicity_threshold = periodicity_threshold
         self.energy_floor_db = energy_floor_db
         self.energy_peak_to_dip = energy_peak_to_dip
+        self.min_syllable_dur = min_syllable_dur
 
-        energy_db = RMSEnvelope(frame_length=frame_length, hop_length=hop_length,
-                                db=True, reference="max")
-        gate = ThresholdGate(PeriodicityEnvelope(), periodicity_threshold)
-        if energy_floor_db is not None:
-            # product of two 0/1 masks = logical AND (paper's stop-closure floor)
-            gate = ProductEnvelope([gate, ThresholdGate(energy_db, energy_floor_db)])
+        # Periodicity and energy share one frame grid: Xie's energy is log gamma(0),
+        # the h=0 term of the same autocovariance as periodicity, on the same frames.
+        # center=False left-aligns RMS onto periodicity's grid.
+        self._periodicity = PeriodicityEnvelope(frame_size=frame_length, frame_shift=hop_length)
+        self._energy_db = RMSEnvelope(frame_length=frame_length, hop_length=hop_length,
+                                      db=True, reference="max", center=False)
 
-        if composition == "slice":
-            self._engine = RegionGatedSegmenter(
-                primary_env=energy_db, gate_env=gate, gate_on=0.5,
-                peak_to_dip=energy_peak_to_dip, min_syllable_dur=min_syllable_dur,
-                sample_rate=sample_rate,
+        # Step 1 regions = intersection of two threshold segmentations: "periodic"
+        # AND "loud". Each is a ThresholdSegmenter; we intersect their dense masks.
+        self._periodic = ThresholdSegmenter(self._periodicity, threshold=periodicity_threshold)
+        self._loud = (ThresholdSegmenter(self._energy_db, threshold=energy_floor_db)
+                      if energy_floor_db is not None else None)
+
+        if composition == "product":
+            energy = RMSEnvelope(frame_length=frame_length, hop_length=hop_length,
+                                 db=False, center=False)
+            gate = ThresholdGate(
+                PeriodicityEnvelope(frame_size=frame_length, frame_shift=hop_length),
+                periodicity_threshold,
             )
-        else:
-            energy = RMSEnvelope(frame_length=frame_length, hop_length=hop_length, db=False)
-            product = ProductEnvelope([energy, gate], weights=weights)
-            self._engine = ConvexHullSegmenter(
-                envelope_computer=product,
+            if energy_floor_db is not None:
+                gate = ProductEnvelope([gate, ThresholdGate(self._energy_db, energy_floor_db)])
+            self._product_engine = ConvexHullSegmenter(
+                envelope_computer=ProductEnvelope([energy, gate], weights=weights),
                 peak_to_dip=energy_peak_to_dip, min_syllable_dur=min_syllable_dur,
                 sample_rate=sample_rate,
             )
 
     def _segment(self, audio, sr) -> List[Tuple[float, float, float]]:
-        # Outer BaseSegmenter.segment() applies SAD; engine runs SAD-free.
-        return self._engine._segment(audio, sr)
+        # Outer BaseSegmenter.segment() applies SAD; this runs SAD-free.
+        if self.composition == "product":
+            return self._product_engine._segment(audio, sr)
+
+        import numpy as np
+        from .threshold import segment_threshold
+        from .convexhull import segment_convexhull
+
+        # Energy computed once on the full utterance -> reference="max" is the
+        # utterance max (Xie's per-utterance normalization). Used for the floor
+        # mask (Step 1) and the nucleus picking (Step 2).
+        energy, e_t = self._energy_db.compute(audio, sr)
+        energy = np.asarray(energy, float)
+        e_t = np.asarray(e_t, float)
+
+        # Step 1: voiced = periodic AND loud (intersect the two threshold masks).
+        voiced, _ = self._periodic.mask(audio, sr)
+        voiced = voiced.astype(bool)
+        if self._loud is not None:
+            loud, _ = self._loud.mask(audio, sr)
+            voiced &= loud.astype(bool)
+
+        nuclei: List[Tuple[float, float, float]] = []
+        for start, _, end in segment_threshold(voiced.astype(np.float32), e_t, threshold=0.5):
+            sel = (e_t >= start) & (e_t <= end)
+            if sel.sum() < 2:
+                continue
+            # Step 2: convex-hull on the region's relevant energy -> nucleus.
+            nuclei.extend(segment_convexhull(
+                energy[sel], e_t[sel],
+                peak_to_dip=self.energy_peak_to_dip,
+                min_syllable_dur=self.min_syllable_dur,
+            ))
+        return nuclei
 
 
 class RhythmGuidedSegmenter(PeakdetectSegmenter):
