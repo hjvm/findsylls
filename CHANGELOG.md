@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [3.3.0] - 2026-07-07
 
 ### Added
 - `EnergyPeriodicitySegmenter` — Xie & Niyogi (2006) two-stage syllable-nucleus
