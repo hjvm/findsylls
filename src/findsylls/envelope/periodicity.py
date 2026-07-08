@@ -44,8 +44,9 @@ class PeriodicityEnvelope(EnvelopeComputer):
     max_period_ms : float
         Upper pitch-period bound in ms (default 15 ms; lag 240 at 16 kHz).
     normalize : bool
-        If True, min-max scale the trace to [0, 1] across the utterance. Default
-        False: periodicity is an absolute measure the paper thresholds directly.
+        If True, divide the trace by its utterance maximum (periodicity is
+        non-negative, so this scales the peak to 1). Default False: periodicity
+        is an absolute measure the paper thresholds directly.
     """
 
     def __init__(
@@ -76,7 +77,7 @@ class PeriodicityEnvelope(EnvelopeComputer):
             return 0.0
 
         h_hi = min(h_max, n - 1)
-        if h_min >= h_hi:
+        if h_min > h_hi:            # empty lag range; == is a valid single lag
             return 0.0
 
         lags = np.arange(h_min, h_hi + 1)
@@ -113,7 +114,9 @@ class PeriodicityEnvelope(EnvelopeComputer):
             envelope[i] = self._frame_periodicity(audio[s:s + n], h_min, h_max)
             times[i] = (s + n / 2) / sr
 
-        if self.normalize and envelope.size and envelope.max() > 0:
-            envelope = envelope / envelope.max()
+        if self.normalize and envelope.size:
+            emax = envelope.max()
+            if emax > 0:
+                envelope = envelope / emax
 
         return envelope, times

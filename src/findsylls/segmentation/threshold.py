@@ -15,14 +15,14 @@ This is the reusable "regions above a threshold" primitive (the region logic in
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 
 from .base import EnvelopeBasedSegmenter
 from ..envelope.base import EnvelopeComputer
 
-_Env = Union[EnvelopeComputer, callable]
+_Env = Union[EnvelopeComputer, Callable]
 
 
 def _runs(mask: np.ndarray) -> List[Tuple[int, int]]:

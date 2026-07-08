@@ -63,3 +63,16 @@ def test_tuned_defaults_give_plausible_syllable_rate(audio):
     out = EnergyPeriodicitySegmenter().segment(a, sr)
     rate = len(out) / (len(a) / sr)
     assert 1.5 <= rate <= 8.0, f"nucleus rate {rate:.1f}/s outside plausible range"
+
+
+def test_sad_only_filters_preserving_utterance_normalization(audio):
+    """SAD must run on the full utterance (per-utterance energy reference) and
+    only *drop* nuclei outside speech regions — so SAD peaks are a subset of the
+    no-SAD peaks, never re-detected against a per-region reference."""
+    a, sr = audio
+    full = EnergyPeriodicitySegmenter().segment(a, sr)
+    sad = EnergyPeriodicitySegmenter(sad="energy").segment(a, sr)
+    full_peaks = {round(p, 4) for _, p, _ in full}
+    for _, p, _ in sad:
+        assert round(p, 4) in full_peaks   # every SAD nucleus is a full-audio nucleus
+    assert len(sad) <= len(full)

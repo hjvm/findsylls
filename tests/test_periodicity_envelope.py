@@ -34,7 +34,7 @@ def _ref_frame(frame: np.ndarray, h_min: int, h_max: int) -> float:
     if r0 <= 0.0:
         return 0.0
     h_hi = min(h_max, n - 1)
-    if h_min >= h_hi:
+    if h_min > h_hi:            # == is a valid single lag
         return 0.0
     p = np.array(
         [float(np.dot(frame[h:], frame[: n - h])) * n / ((n - h) * r0)

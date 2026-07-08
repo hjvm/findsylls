@@ -23,7 +23,7 @@ picking (use the peak).
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -138,7 +138,7 @@ class ConvexHullSegmenter(EnvelopeBasedSegmenter):
 
     def __init__(
         self,
-        envelope_computer: Optional[Union[EnvelopeComputer, callable]] = None,
+        envelope_computer: Optional[Union[EnvelopeComputer, Callable]] = None,
         peak_to_dip: float = 0.0,
         min_syllable_dur: float = 0.05,
         sample_rate: int = 16000,

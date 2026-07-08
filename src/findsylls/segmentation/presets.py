@@ -504,8 +504,21 @@ class EnergyPeriodicitySegmenter(BaseSegmenter):
         self._loud = (ThresholdSegmenter(self._energy_db, threshold=energy_floor_db)
                       if energy_floor_db is not None else None)
 
+    def segment(self, audio, sr) -> List[Tuple[float, float, float]]:
+        # Run on the FULL utterance so reference="max" is the utterance max
+        # (Xie's per-utterance normalization). BaseSegmenter's SAD path would
+        # instead slice the audio into regions and make the dB reference
+        # per-region, so we don't use it: compute nuclei once, then drop any
+        # whose peak falls outside a SAD speech region. (No SAD -> identical to
+        # a plain full-audio run.)
+        nuclei = self._segment(audio, sr)
+        if self.sad is None:
+            return nuclei
+        regions = self.sad.get_speech_regions(audio, sr)
+        return [(s, p, e) for (s, p, e) in nuclei
+                if any(rs <= p <= re for rs, re in regions)]
+
     def _segment(self, audio, sr) -> List[Tuple[float, float, float]]:
-        # Outer BaseSegmenter.segment() applies SAD; this runs SAD-free.
         import numpy as np
         from .threshold import segment_threshold
         from .convexhull import segment_convexhull
