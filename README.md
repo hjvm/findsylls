@@ -138,7 +138,7 @@ Preset classes replicate the exact configurations from published papers. Each ca
 
 | Preset | Paper | Approach |
 |--------|-------|----------|
-| `SBSPeakdetectSegmenter` | Vázquez (dissertation baseline) | spectral band subtraction envelope + Billauer peak detection |
+| `SBSPeakdetectSegmenter` | my personal config | spectral band subtraction envelope + Billauer peak detection |
 | `ThetaOscillatorSegmenter` | Räsänen et al. 2018 | gammatone filterbank → damped-oscillator sonority |
 | `EnergyPeriodicitySegmenter` | Xie & Niyogi 2006 | periodicity-gated regions + energy convex-hull nucleus picking |
 | `RhythmGuidedSegmenter` | Zhang & Glass 2009 | rhythm-guided peak recovery of closely-spaced nuclei |
