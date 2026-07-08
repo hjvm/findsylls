@@ -136,6 +136,18 @@ fig = plot_multiple_envelope_segmentations(audio, sr, results)
 
 Preset classes replicate the exact configurations from published papers. Each carries a `REFERENCE` attribute and a `cite()` method — see [Preset Citations](#preset-citations) below.
 
+| Preset | Paper | Approach | Runs on |
+|--------|-------|----------|---------|
+| `SBSPeakdetectSegmenter` | Vázquez (dissertation baseline) | spectral band subtraction envelope + Billauer peak detection | CPU |
+| `ThetaOscillatorSegmenter` | Räsänen et al. 2018 | gammatone filterbank → damped-oscillator sonority | CPU |
+| `EnergyPeriodicitySegmenter` | Xie & Niyogi 2006 | periodicity-gated regions + energy convex-hull nucleus picking | CPU |
+| `RhythmGuidedSegmenter` | Zhang & Glass 2009 | rhythm-guided peak recovery of closely-spaced nuclei | CPU |
+| `SylberSegmenter` | Cho et al. 2025 | greedy cosine merging on Sylber HuBERT features | GPU\* |
+| `VGHubertMinCutSegmenter` | Peng et al. 2023 | self-similarity MinCut on VG-HuBERT features | GPU\* |
+| `VGHubertCLSSegmenter` | Peng & Harwath 2022 | CLS-attention thresholding on VG-HuBERT | GPU\* |
+
+<sub>\* Requires `findsylls[end2end]` and a one-time model download; runs on CPU too, just slower.</sub>
+
 ```python
 from findsylls.segmentation.presets import (
     ThetaOscillatorSegmenter,     # Räsänen et al. 2018 — gammatone + oscillator (no GPU)
