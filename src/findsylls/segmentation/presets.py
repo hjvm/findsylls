@@ -19,8 +19,9 @@ Available presets:
 - VGHubertCLSSegmenter: VG-HuBERT with CLS attention (Peng et al. 2022)
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
+from .base import BaseSegmenter
 from .cls_attention import CLSAttentionSegmenter
 from .greedy_cosine import GreedyCosineSegmenter
 from .mincut import MinCutSegmenter
@@ -409,6 +410,274 @@ class VGHubertCLSSegmenter(CLSAttentionSegmenter):
         self.device = device
 
 
+class EnergyPeriodicitySegmenter(BaseSegmenter):
+    """
+    Energy + periodicity syllable-nucleus detection (Xie & Niyogi 2006).
+
+    Faithful two-stage detector, composed directly from findsylls primitives
+    (like GreedyCosineSegmenter, the whole two-stage logic lives in ``_segment``,
+    not a separate orchestrator). Periodicity and the relevant energy share one
+    frame grid (Xie's energy is ``log gamma(0)`` -- the h=0 term of the same
+    autocovariance as periodicity, on the same frames):
+
+    1. **Region finding (Step 1)** — voiced regions are the intersection of two
+       ``ThresholdSegmenter`` masks: "periodic" (periodicity >=
+       ``periodicity_threshold``) AND "loud" (relative energy > ``energy_floor_db``,
+       Xie's stop-closure floor). The AND of the two dense masks. This is the
+       absolute-threshold half of Xie's region criterion (§2.3).
+    2. **Nucleus picking (Step 2)** — within each region, convex-hull on the dB
+       relevant energy (``segment_convexhull``, ``energy_peak_to_dip`` = 4.5 dB,
+       Xie Table 1) picks the energy peak(s) as the nuclei. This is Xie §2.3
+       stage 2 verbatim.
+
+    Performance (TIMIT, 60-file tune + 200-file held-out, nuclei @ 50 ms):
+    accuracy 85.0 / total error 29.1 vs the paper's 81.6 / 29.3 — matches total
+    error and exceeds recall. (Frame alignment between the two cues is load-
+    bearing: an earlier misaligned energy sat ~4.7 dB off and cost ~2 pts.)
+
+    Note on Step 1: Xie's paper also refines region boundaries with a convex hull
+    on the periodicity trace (peak-to-dip 0.7). Empirically that convex-hull
+    region-finding fragments our periodicity trace and drops ~10 pts of total
+    error, so this preset uses the absolute-threshold half of their criterion,
+    which reproduces the paper. Convex-hull still does the nucleus picking.
+
+    Reference:
+        Xie, Z., & Niyogi, P. (2006). "Robust Acoustic-Based Syllable Detection."
+        Interspeech 2006.
+
+    Args:
+        periodicity_threshold: min periodicity for a frame to be voiced
+            (default 0.4; vowels ~0.9, obstruents ~0.49).
+        energy_floor_db: min relative energy (dB below max) for a frame to join a
+            region -- Xie's stop-closure floor (default -30.0; None disables).
+        energy_peak_to_dip: convex-hull dip threshold for picking energy peaks
+            within a region (default 4.5 dB, Xie Table 1).
+        frame_length, hop_length: shared periodicity/energy framing (default
+            400/160 = 25/10 ms at 16 kHz, Xie Table 1).
+        min_syllable_dur: minimum nucleus-segment duration in seconds.
+        sample_rate, sad, add_utterance_boundaries: as in BaseSegmenter.
+
+    Example:
+        >>> seg = EnergyPeriodicitySegmenter()
+        >>> segments = seg.segment(audio, sr=16000)
+        >>> seg.cite()
+    """
+
+    REFERENCE = (
+        "Xie, Z., & Niyogi, P. (2006). "
+        '"Robust Acoustic-Based Syllable Detection." '
+        "Interspeech 2006. https://doi.org/10.21437/Interspeech.2006-440"
+    )
+
+    def __init__(
+        self,
+        periodicity_threshold: float = 0.4,
+        energy_floor_db: Optional[float] = -30.0,
+        energy_peak_to_dip: float = 4.5,
+        frame_length: int = 400,
+        hop_length: int = 160,
+        min_syllable_dur: float = 0.05,
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
+    ):
+        super().__init__(sample_rate=sample_rate, sad=sad,
+                         add_utterance_boundaries=add_utterance_boundaries)
+        from ..envelope import PeriodicityEnvelope, RMSEnvelope
+        from .threshold import ThresholdSegmenter
+
+        self.periodicity_threshold = periodicity_threshold
+        self.energy_floor_db = energy_floor_db
+        self.energy_peak_to_dip = energy_peak_to_dip
+        self.min_syllable_dur = min_syllable_dur
+
+        # Periodicity and energy share one frame grid: Xie's energy is log gamma(0),
+        # the h=0 term of the same autocovariance as periodicity, on the same frames.
+        # center=False left-aligns RMS onto periodicity's grid.
+        self._periodicity = PeriodicityEnvelope(frame_size=frame_length, frame_shift=hop_length)
+        self._energy_db = RMSEnvelope(frame_length=frame_length, hop_length=hop_length,
+                                      db=True, reference="max", center=False)
+
+        # Step 1 regions = intersection of two threshold segmentations: "periodic"
+        # AND "loud". Each is a ThresholdSegmenter; we intersect their dense masks.
+        self._periodic = ThresholdSegmenter(self._periodicity, threshold=periodicity_threshold)
+        self._loud = (ThresholdSegmenter(self._energy_db, threshold=energy_floor_db)
+                      if energy_floor_db is not None else None)
+
+    def segment(self, audio, sr) -> List[Tuple[float, float, float]]:
+        # Run on the FULL utterance so reference="max" is the utterance max
+        # (Xie's per-utterance normalization). BaseSegmenter's SAD path would
+        # instead slice the audio into regions and make the dB reference
+        # per-region, so we don't use it: compute nuclei once, then drop any
+        # whose peak falls outside a SAD speech region. (No SAD -> identical to
+        # a plain full-audio run.)
+        nuclei = self._segment(audio, sr)
+        if self.sad is None:
+            return nuclei
+        regions = self.sad.get_speech_regions(audio, sr)
+        return [(s, p, e) for (s, p, e) in nuclei
+                if any(rs <= p <= re for rs, re in regions)]
+
+    def _segment(self, audio, sr) -> List[Tuple[float, float, float]]:
+        import numpy as np
+        from .threshold import segment_threshold
+        from .convexhull import segment_convexhull
+
+        # Energy computed once on the full utterance -> reference="max" is the
+        # utterance max (Xie's per-utterance normalization). Used for the floor
+        # mask (Step 1) and the nucleus picking (Step 2).
+        energy, e_t = self._energy_db.compute(audio, sr)
+        energy = np.asarray(energy, float)
+        e_t = np.asarray(e_t, float)
+
+        # Step 1: voiced = periodic AND loud (intersect the two threshold masks).
+        voiced, _ = self._periodic.mask(audio, sr)
+        voiced = voiced.astype(bool)
+        if self._loud is not None:
+            loud, _ = self._loud.mask(audio, sr)
+            voiced &= loud.astype(bool)
+
+        nuclei: List[Tuple[float, float, float]] = []
+        for start, _, end in segment_threshold(voiced.astype(np.float32), e_t, threshold=0.5):
+            sel = (e_t >= start) & (e_t <= end)
+            if sel.sum() < 2:
+                continue
+            # Step 2: convex-hull on the region's relevant energy -> nucleus.
+            nuclei.extend(segment_convexhull(
+                energy[sel], e_t[sel],
+                peak_to_dip=self.energy_peak_to_dip,
+                min_syllable_dur=self.min_syllable_dur,
+            ))
+        return nuclei
+
+
+class RhythmGuidedSegmenter(BaseSegmenter):
+    """
+    Speech-rhythm guided syllable nuclei detection (Zhang & Glass 2009).
+
+    Rhythm-guided *dynamic sensitivity* (the actual mechanism, established by
+    error analysis): closely-spaced syllable nuclei often share one broad energy
+    hump, separated by a valley too shallow for a single global peak threshold
+    to register (median inter-nucleus dip ~0.056 vs a precision-safe delta of
+    ~0.3). A global loose delta would split those merges but flood everything
+    with false positives. Rhythm resolves this by licensing a *loose* delta only
+    where a nucleus is predicted:
+
+    1. Energy ``E(t)`` = ERB/gammatone Hilbert-sum (GammatoneEnvelope).
+    2. Tight-delta peakdetect -> ``strong`` peaks (high precision).
+    3. Fit the rhythm sinusoid to ``strong`` (seeded LMS) -> crests = predicted
+       nucleus times.
+    4. Loose-delta peakdetect -> candidates that catch the shallow-valley merges.
+    5. Recovery: keep a loose candidate only if it sits within half a period of a
+       crest that has no strong peak -- sensitivity spent only where rhythm
+       predicts a nucleus, so false positives stay contained.
+    6. Pitch verification (§2.3): drop peaks in unvoiced regions (PeriodicityEnvelope
+       post-removal filter, not an external pitch tracker).
+
+    Divergences from the paper (documented): whole-utterance batch rhythm fit
+    instead of the iterative left-to-right loop (§3.1 reports "very similar
+    results"); periodicity-threshold voicing instead of an ESPS pitch tracker.
+
+    Performance (TIMIT, vowel reference, 50 ms window): rhythm recovery lifts
+    recall ~75 -> ~89 over the no-recovery nRG ablation for +5 F1 (held-out
+    nRG 84.3 -> RG 89.3), reproducing the paper's rhythm benefit (+3.5). RG F1
+    89.3 exceeds the paper's nRG (88.6) and approaches their RG (92.1).
+
+    Reference:
+        Zhang, Y., & Glass, J. R. (2009). "Speech rhythm guided syllable nuclei
+        detection." ICASSP 2009. https://doi.org/10.1109/ICASSP.2009.4960454
+
+    Args:
+        tight_delta: precision-safe peakdetect delta for the reliable ``strong``
+            peaks that seed the rhythm fit (default 0.3).
+        loose_delta: sensitive delta for recovering shallow-valley merged nuclei,
+            trusted only near rhythm crests (default 0.08).
+        voicing_threshold: periodicity gate for pitch verification (default 0.4;
+            None disables).
+        seed_period: rhythm fit seed / Zhang's default periodicity (default 0.2 s).
+        sample_rate, sad, add_utterance_boundaries: as in BaseSegmenter.
+
+    Example:
+        >>> segmenter = RhythmGuidedSegmenter()
+        >>> segments = segmenter.segment(audio, sr=16000)
+        >>> segmenter.cite()
+    """
+
+    REFERENCE = (
+        "Zhang, Y., & Glass, J. R. (2009). "
+        '"Speech rhythm guided syllable nuclei detection." '
+        "ICASSP 2009, 3797-3800. https://doi.org/10.1109/ICASSP.2009.4960454"
+    )
+
+    def __init__(
+        self,
+        tight_delta: float = 0.3,
+        loose_delta: float = 0.08,
+        voicing_threshold: Optional[float] = 0.4,
+        seed_period: float = 0.20,
+        sample_rate: int = 16000,
+        sad: Optional["BaseSAD"] = None,
+        add_utterance_boundaries: bool = True,
+    ):
+        super().__init__(sample_rate=sample_rate, sad=sad,
+                         add_utterance_boundaries=add_utterance_boundaries)
+        from ..envelope import GammatoneEnvelope, PeriodicityEnvelope
+
+        self.tight_delta = tight_delta
+        self.loose_delta = loose_delta
+        self.voicing_threshold = voicing_threshold
+        self.seed_period = seed_period
+        self._energy = GammatoneEnvelope(reduction="normalized_sum")
+        self._periodicity = PeriodicityEnvelope()
+
+    @staticmethod
+    def _peaks_to_spans(peaks, t0, t1):
+        p = sorted(peaks)
+        spans = []
+        for i, pk in enumerate(p):
+            left = t0 if i == 0 else (p[i - 1] + pk) / 2
+            right = t1 if i == len(p) - 1 else (pk + p[i + 1]) / 2
+            spans.append((float(left), float(pk), float(right)))
+        return spans
+
+    def _segment(self, audio, sr) -> List[Tuple[float, float, float]]:
+        import numpy as np
+        from .peakdetect_segmenter import segment_peakdetect
+        from .rhythm import fit_rhythm_sinusoid, rhythm_crests
+
+        E, t = self._energy.compute(audio, sr)
+        E = np.asarray(E, float); t = np.asarray(t, float)
+        span = E.max() - E.min()
+        En = (E - E.min()) / span if span > 0 else np.zeros_like(E)
+
+        strong = [p for _, p, _ in segment_peakdetect(
+            En, t, delta=self.tight_delta, add_boundary_valleys=True)]
+        kept = list(strong)
+
+        if len(strong) >= 2:
+            k1, k2 = fit_rhythm_sinusoid(strong, seed_period=self.seed_period)
+            crests = rhythm_crests(k1, k2, float(t[0]), float(t[-1]))
+            loose = [p for _, p, _ in segment_peakdetect(
+                En, t, delta=self.loose_delta, add_boundary_valleys=True)]
+            strong_arr = np.asarray(strong)
+            half = np.pi / k1                       # half a rhythm period
+            for c in crests:
+                if strong_arr.size and np.min(np.abs(strong_arr - c)) <= half:
+                    continue                         # crest already has a strong peak
+                cand = [p for p in loose if abs(p - c) < half]
+                if cand:                             # recover the nucleus nearest the crest
+                    kept.append(min(cand, key=lambda p: abs(p - c)))
+
+        kept = sorted(set(kept))
+        if self.voicing_threshold is not None and kept:
+            per, per_t = self._periodicity.compute(audio, sr)
+            per = np.asarray(per, float); per_t = np.asarray(per_t, float)
+            kept = [p for p in kept
+                    if per[np.argmin(np.abs(per_t - p))] >= self.voicing_threshold]
+
+        return self._peaks_to_spans(kept, float(t[0]), float(t[-1]))
+
+
 # ---------------------------------------------------------------------------
 # Discovery helpers
 # ---------------------------------------------------------------------------
@@ -416,6 +685,8 @@ class VGHubertCLSSegmenter(CLSAttentionSegmenter):
 _SEGMENTER_PRESETS = {
     "sbs_peakdetect": SBSPeakdetectSegmenter,
     "theta_oscillator": ThetaOscillatorSegmenter,
+    "energy_periodicity": EnergyPeriodicitySegmenter,
+    "rhythm_guided": RhythmGuidedSegmenter,
     "sylber": SylberSegmenter,
     "vg_hubert_mincut": VGHubertMinCutSegmenter,
     "vg_hubert_cls": VGHubertCLSSegmenter,

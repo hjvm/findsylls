@@ -3,6 +3,7 @@ from .base import EnvelopeComputer, PseudoEnvelope
 from .rms import RMSEnvelope
 from .hilbert import HilbertEnvelope
 from .theta import ThetaEnvelope
+from .gammatone import GammatoneEnvelope
 from .sbs import SBSEnvelope
 from .lowpass import LowpassEnvelope
 from .feature_coherence import (
@@ -11,6 +12,7 @@ from .feature_coherence import (
 from .cls_attention import CLSAttentionEnvelope
 from .local_cosine import LocalCosineEnvelope, GreedyCosineEnvelope
 from .mincut import MinCutEnvelope
+from .periodicity import PeriodicityEnvelope
 
 __all__ = [
     "get_amplitude_envelope",  # Functional wrapper over get_envelope_computer
@@ -20,6 +22,7 @@ __all__ = [
     "RMSEnvelope",
     "HilbertEnvelope",
     "ThetaEnvelope",
+    "GammatoneEnvelope",
     "SBSEnvelope",
     "LowpassEnvelope",
     "SSMEnvelopeComputer",
@@ -27,4 +30,5 @@ __all__ = [
     "GreedyCosineEnvelope",  # backward-compatible alias of LocalCosineEnvelope
     "MinCutEnvelope",
     "CLSAttentionEnvelope",
+    "PeriodicityEnvelope",
 ]

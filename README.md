@@ -9,8 +9,8 @@ Language-agnostic toolkit for unsupervised syllable-level speech segmentation, e
 
 findsylls provides a full pipeline from raw audio to clustered syllable embeddings:
 
-- **Envelope computation** — RMS, Hilbert, low-pass, SBS, theta, and neural pseudo-envelopes
-- **Syllable segmentation** — classical peak detection and neural end-to-end methods (Sylber, VG-HuBERT)
+- **Envelope computation** — RMS, Hilbert, low-pass, SBS, theta, gammatone, periodicity, and neural pseudo-envelopes
+- **Syllable segmentation** — classical peak detection, convex-hull and threshold segmentation, and neural end-to-end methods (Sylber, VG-HuBERT)
 - **Feature extraction** — MFCC, mel spectrogram, HuBERT, Sylber, VG-HuBERT
 - **Syllable embedding** — pooled per-syllable vectors for downstream tasks
 - **Unsupervised discovery** — k-means, mini-batch k-means, agglomerative clustering
@@ -98,7 +98,7 @@ from findsylls import get_amplitude_envelope
 envelope, times = get_amplitude_envelope(audio, sr, method="theta")
 ```
 
-**Available envelope methods:** `rms`, `hilbert`, `lowpass`, `sbs`, `theta`, `cls_attention`, `greedy_cosine`, `mincut`
+**Available envelope methods:** `rms`, `hilbert`, `lowpass`, `sbs`, `theta`, `gammatone`, `periodicity`, `cls_attention`, `greedy_cosine`, `mincut`
 
 ---
 
@@ -136,12 +136,24 @@ fig = plot_multiple_envelope_segmentations(audio, sr, results)
 
 Preset classes replicate the exact configurations from published papers. Each carries a `REFERENCE` attribute and a `cite()` method — see [Preset Citations](#preset-citations) below.
 
+| Preset | Paper | Approach |
+|--------|-------|----------|
+| `SBSPeakdetectSegmenter` | Vázquez (dissertation baseline) | spectral band subtraction envelope + Billauer peak detection |
+| `ThetaOscillatorSegmenter` | Räsänen et al. 2018 | gammatone filterbank → damped-oscillator sonority |
+| `EnergyPeriodicitySegmenter` | Xie & Niyogi 2006 | periodicity-gated regions + energy convex-hull nucleus picking |
+| `RhythmGuidedSegmenter` | Zhang & Glass 2009 | rhythm-guided peak recovery of closely-spaced nuclei |
+| `SylberSegmenter` | Cho et al. 2025 | greedy cosine merging on Sylber HuBERT features |
+| `VGHubertMinCutSegmenter` | Peng et al. 2023 | self-similarity MinCut on VG-HuBERT features |
+| `VGHubertCLSSegmenter` | Peng & Harwath 2022 | CLS-attention thresholding on VG-HuBERT |
+
 ```python
 from findsylls.segmentation.presets import (
-    ThetaOscillatorSegmenter,  # Räsänen et al. 2018 — gammatone + oscillator (no GPU)
-    SylberSegmenter,           # Cho et al. 2025 — greedy cosine on Sylber HuBERT
-    VGHubertMinCutSegmenter,   # Peng et al. 2023 — SSM MinCut on VG-HuBERT
-    VGHubertCLSSegmenter,      # Peng & Harwath 2022 — CLS attention on VG-HuBERT
+    ThetaOscillatorSegmenter,     # Räsänen et al. 2018 — gammatone + oscillator (no GPU)
+    EnergyPeriodicitySegmenter,   # Xie & Niyogi 2006 — periodicity + energy convex-hull (no GPU)
+    RhythmGuidedSegmenter,        # Zhang & Glass 2009 — rhythm-guided peak recovery (no GPU)
+    SylberSegmenter,              # Cho et al. 2025 — greedy cosine on Sylber HuBERT
+    VGHubertMinCutSegmenter,      # Peng et al. 2023 — SSM MinCut on VG-HuBERT
+    VGHubertCLSSegmenter,         # Peng & Harwath 2022 — CLS attention on VG-HuBERT
 )
 from findsylls.audio.utils import load_audio
 
@@ -150,6 +162,10 @@ audio, sr = load_audio("audio.wav")
 # Theta oscillator (no model download, paper defaults: f=5, Q=0.5, N=8)
 theta = ThetaOscillatorSegmenter()
 syllables = theta.segment(audio, sr=sr)
+
+# Xie & Niyogi periodicity+energy, and Zhang & Glass rhythm-guided (no model download)
+nuclei = EnergyPeriodicitySegmenter().segment(audio, sr=sr)
+nuclei = RhythmGuidedSegmenter().segment(audio, sr=sr)
 
 # Sylber (requires findsylls[end2end])
 sylber = SylberSegmenter()
@@ -234,7 +250,7 @@ whatever chunk they receive.
 from findsylls.segmentation import get_segmenter, list_segmenters, list_segmenter_presets
 
 print(list_segmenters())
-# ['peakdetect', 'cls_attention', 'mincut', 'greedy_cosine']
+# ['peakdetect', 'convexhull', 'threshold', 'cls_attention', 'mincut', 'greedy_cosine']
 
 print(list_segmenter_presets())
 # {'theta_oscillator': ThetaOscillatorSegmenter, 'sylber': SylberSegmenter, ...}
@@ -577,13 +593,13 @@ findsylls evaluate "data/**/*.wav" "data/**/*.TextGrid" \
 ## Methods Reference
 
 ### Envelope methods
-`rms` · `hilbert` · `lowpass` · `sbs` · `theta` · `cls_attention` · `greedy_cosine` · `mincut`
+`rms` · `hilbert` · `lowpass` · `sbs` · `theta` · `gammatone` · `periodicity` · `cls_attention` · `greedy_cosine` · `mincut`
 
 ### Segmentation methods (dispatch strings)
-`peakdetect` · `cls_attention` · `mincut` · `greedy_cosine`
+`peakdetect` · `convexhull` · `threshold` · `cls_attention` · `mincut` · `greedy_cosine`
 
 ### Preset segmenters (paper-replication classes)
-`SBSPeakdetectSegmenter` · `ThetaOscillatorSegmenter` · `SylberSegmenter` · `VGHubertMinCutSegmenter` · `VGHubertCLSSegmenter`
+`SBSPeakdetectSegmenter` · `ThetaOscillatorSegmenter` · `EnergyPeriodicitySegmenter` · `RhythmGuidedSegmenter` · `SylberSegmenter` · `VGHubertMinCutSegmenter` · `VGHubertCLSSegmenter`
 
 ### Feature extractors
 `mfcc` · `melspectrogram` · `hubert` · `sylber` · `vghubert`
@@ -623,6 +639,14 @@ seg.cite()
 > Räsänen, O., Doyle, G., & Frank, M. C. (2018). "Pre-linguistic segmentation of speech into syllable-like units." *Cognition*, 171, 130–150. https://doi.org/10.1016/j.cognition.2017.11.003
 >
 > MATLAB implementation: https://github.com/orasanen/thetaOscillator
+
+**Energy + Periodicity** — Xie & Niyogi (2006)
+
+> Xie, Z., & Niyogi, P. (2006). "Robust Acoustic-Based Syllable Detection." *Interspeech 2006*. https://doi.org/10.21437/Interspeech.2006-440
+
+**Rhythm-Guided** — Zhang & Glass (2009)
+
+> Zhang, Y., & Glass, J. R. (2009). "Speech rhythm guided syllable nuclei detection." *ICASSP 2009*, 3797–3800. https://doi.org/10.1109/ICASSP.2009.4960454
 
 **Sylber** — Cho et al. (2025)
 

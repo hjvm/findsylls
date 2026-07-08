@@ -173,17 +173,17 @@ class TestGammatoneParity:
     """findsylls gammatone output matches the Python port reference."""
 
     def test_shape_matches(self, audio_16k, ref_gammatone):
-        from findsylls.envelope.gammatone import _gammatone_filterbank_envelope
+        from findsylls.envelope.gammatone import gammatone_filterbank
         audio, sr = audio_16k
-        ours, _ = _gammatone_filterbank_envelope(audio, sr)
+        ours, _ = gammatone_filterbank(audio, sr)
         assert ours.shape == ref_gammatone.shape, (
             f"Shape mismatch: findsylls={ours.shape}, reference={ref_gammatone.shape}"
         )
 
     def test_values_match(self, audio_16k, ref_gammatone):
-        from findsylls.envelope.gammatone import _gammatone_filterbank_envelope
+        from findsylls.envelope.gammatone import gammatone_filterbank
         audio, sr = audio_16k
-        ours, _ = _gammatone_filterbank_envelope(audio, sr)
+        ours, _ = gammatone_filterbank(audio, sr)
         np.testing.assert_allclose(
             ours, ref_gammatone, atol=ATOL_GAMMATONE,
             err_msg="Gammatone filterbank diverges from Python port reference"

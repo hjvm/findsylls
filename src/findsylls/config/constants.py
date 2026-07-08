@@ -18,6 +18,9 @@ VOWELS = {
     "IH", "IX", "IY",
     "OW", "OY",
     "UH", "UW",
+    # TIMIT-specific vowels (labels normalize to these after stripping non-alpha:
+    # ax-h -> AXH, axr -> AXR, ux -> UX)
+    "AXH", "AXR", "UX",
     # Spanish vowels
     "A", "E", "I", "O", "U",
 }

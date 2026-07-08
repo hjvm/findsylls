@@ -4,9 +4,9 @@ message: If you use this software, please cite it using the metadata below.
 authors:
   - given-names: Héctor Javier
     family-names: Vázquez Martínez
-version: 3.2.1
+version: 3.3.0
 license: MIT
-date-released: 2026-06-15
+date-released: 2026-07-07
 repository-code: https://github.com/hjvm/findsylls
 doi: 10.5281/zenodo.20707804  # Zenodo concept DOI (all versions)
 keywords:

@@ -14,6 +14,15 @@ from .peakdetect_segmenter import (
     segment_peakdetect,
     PeakdetectSegmenter,
 )
+from .convexhull import (
+    segment_convexhull,
+    ConvexHullSegmenter,
+)
+from .threshold import (
+    segment_threshold,
+    ThresholdSegmenter,
+)
+from .rhythm import fit_rhythm_sinusoid, rhythm_crests
 from .mincut import (
     MinCutSegmenter,
     min_cut,
@@ -29,6 +38,8 @@ from .cls_attention import CLSAttentionSegmenter
 from .presets import (
     SBSPeakdetectSegmenter,
     ThetaOscillatorSegmenter,
+    EnergyPeriodicitySegmenter,
+    RhythmGuidedSegmenter,
     SylberSegmenter,
     VGHubertMinCutSegmenter,
     VGHubertCLSSegmenter,
@@ -55,6 +66,12 @@ __all__ = [
     "End2EndSegmenter",
     # Envelope-based (Phase 5)
     "PeakdetectSegmenter",
+    "segment_convexhull",
+    "ConvexHullSegmenter",
+    "segment_threshold",
+    "ThresholdSegmenter",
+    "fit_rhythm_sinusoid",
+    "rhythm_crests",
     # Feature-based (Phase 5)
     "MinCutSegmenter",
     "GreedyCosineSegmenter",
@@ -70,6 +87,8 @@ __all__ = [
     # Preset configurations
     "SBSPeakdetectSegmenter",
     "ThetaOscillatorSegmenter",
+    "EnergyPeriodicitySegmenter",
+    "RhythmGuidedSegmenter",
     "SylberSegmenter",
     "VGHubertMinCutSegmenter",
     "VGHubertCLSSegmenter",
