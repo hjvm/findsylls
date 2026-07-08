@@ -24,16 +24,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - `VOWELS` constant was missing the TIMIT vowels `ux`, `axr`, `ax-h`, which
-  undercounted the reference vowel set in nuclei evaluation.
-
-### Removed (breaking)
-- `ProductEnvelope`, `ThresholdGate` (multiplicative-gating helpers — no longer used;
-  compositions use `ThresholdSegmenter` masks / numpy directly).
-- `RhythmEnvelope` and the `rhythm` **envelope** dispatch method (rhythm operates on
-  peak trains, not audio — its math moved to `segmentation/rhythm.py`).
-- `RegionGatedSegmenter` (redundant orchestrator; two-stage logic lives in the presets).
-- `RhythmGuidedSegmenter` constructor changed: `delta`/`rhythm_floor`/`first_pass_delta`/
-  `period_range` replaced by `tight_delta`/`loose_delta`/`seed_period`.
+  undercounted the reference vowel set in nuclei evaluation (changes TIMIT
+  nuclei precision/recall figures).
 
 ## [3.2.0] - 2026-06-03
 
