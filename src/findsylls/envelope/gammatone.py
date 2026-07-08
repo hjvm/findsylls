@@ -6,7 +6,7 @@ methods:
 
 - ``ThetaEnvelope`` calls ``gammatone_filterbank()`` and applies its oscillator
   + top-N reduction.
-- Zhang & Glass (2006) ERB envelope = per-channel normalize + sum, i.e.
+- Zhang & Glass (2009) ERB envelope = per-channel normalize + sum, i.e.
   ``GammatoneEnvelope(reduction="normalized_sum")``.
 - Standalone: ``GammatoneEnvelope()`` (1-D sum) or ``.filterbank()`` (multi-band).
 
@@ -28,6 +28,8 @@ def gammatone_filterbank(waveform, sr, bands=20, minfreq=50, maxfreq=7500, resam
             ``resample_rate``), low band first.
         times: (time,) frame centre times in seconds.
     """
+    if bands < 2:
+        raise ValueError(f"bands must be >= 2 for a log-spaced filterbank, got {bands}.")
     cfs = np.zeros((bands, 1))
     const = (maxfreq / minfreq) ** (1 / (bands - 1))
     cfs[0] = minfreq
@@ -49,7 +51,7 @@ def _reduce_bands(bands_env: np.ndarray, reduction: str) -> np.ndarray:
         return bands_env.mean(axis=0)
     if reduction == "normalized_sum":
         # per-band peak normalisation, then sum ("reinforce energy agreement of
-        # each channel", Zhang & Glass 2006)
+        # each channel", Zhang & Glass 2009)
         peak = bands_env.max(axis=1, keepdims=True)
         peak = np.where(peak > 0, peak, 1.0)
         return (bands_env / peak).sum(axis=0)
@@ -69,7 +71,7 @@ class GammatoneEnvelope(EnvelopeComputer):
         bands, minfreq, maxfreq, resample_rate: filterbank geometry.
         reduction: how ``compute()`` collapses bands to 1-D --
             'sum' (default), 'mean', or 'normalized_sum' (per-band peak-normalise
-            then sum; the Zhang & Glass 2006 total envelope).
+            then sum; the Zhang & Glass 2009 total envelope).
     """
 
     def __init__(self, bands=20, minfreq=50, maxfreq=7500, resample_rate=1000, reduction="sum"):

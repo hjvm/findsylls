@@ -57,10 +57,13 @@ def _hull_dip(trace: np.ndarray, lo: int, hi: int) -> Tuple[int, float]:
 
 
 def _boundaries(trace: np.ndarray, threshold: float) -> List[int]:
-    """Interior split indices, deepest-dip-first, via the recursive hull rule.
+    """Interior split indices, sorted by position.
 
-    Explicit stack (not Python recursion) so ``peak_to_dip=0`` on a noisy trace
-    can't blow the interpreter's recursion limit.
+    Each segment is split at its deepest below-hull dip (the recursive hull
+    rule), then its two halves are split in turn; the collected boundary indices
+    are returned in ascending position order. Uses an explicit stack (not Python
+    recursion) so ``peak_to_dip=0`` on a noisy trace can't blow the interpreter's
+    recursion limit.
     """
     out: List[int] = []
     stack: List[Tuple[int, int]] = [(0, trace.shape[0] - 1)]
@@ -85,10 +88,10 @@ def segment_convexhull(trace: np.ndarray, times: np.ndarray,
         trace: 1-D signal (energy, periodicity, loudness, ...).
         times: matching frame times in seconds (same length as ``trace``).
         **kwargs:
-            peak_to_dip: minimum dip depth (in ``trace`` units) below the local
-                chord for a valley to split a segment (default 0.0 = split at
-                every interior minimum). Xie uses 0.7 on periodicity, 4.5 dB on
-                energy.
+            peak_to_dip: minimum dip depth (in ``trace`` units) below the upper
+                convex hull for a valley to split a segment (default 0.0 = split
+                at every interior minimum). Xie uses 0.7 on periodicity, 4.5 dB
+                on energy.
             min_syllable_dur: drop segments shorter than this many seconds
                 (default 0.05).
 

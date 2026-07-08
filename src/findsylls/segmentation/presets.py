@@ -591,7 +591,7 @@ class RhythmGuidedSegmenter(BaseSegmenter):
         tight_delta: precision-safe peakdetect delta for the reliable ``strong``
             peaks that seed the rhythm fit (default 0.3).
         loose_delta: sensitive delta for recovering shallow-valley merged nuclei,
-            trusted only near rhythm crests (default 0.05).
+            trusted only near rhythm crests (default 0.08).
         voicing_threshold: periodicity gate for pitch verification (default 0.4;
             None disables).
         seed_period: rhythm fit seed / Zhang's default periodicity (default 0.2 s).
