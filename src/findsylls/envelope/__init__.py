@@ -13,7 +13,6 @@ from .cls_attention import CLSAttentionEnvelope
 from .local_cosine import LocalCosineEnvelope, GreedyCosineEnvelope
 from .mincut import MinCutEnvelope
 from .periodicity import PeriodicityEnvelope
-from .rhythm import RhythmEnvelope, fit_rhythm_sinusoid
 
 __all__ = [
     "get_amplitude_envelope",  # Functional wrapper over get_envelope_computer
@@ -32,6 +31,4 @@ __all__ = [
     "MinCutEnvelope",
     "CLSAttentionEnvelope",
     "PeriodicityEnvelope",
-    "RhythmEnvelope",
-    "fit_rhythm_sinusoid",
 ]

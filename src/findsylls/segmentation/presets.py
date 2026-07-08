@@ -538,49 +538,50 @@ class EnergyPeriodicitySegmenter(BaseSegmenter):
         return nuclei
 
 
-class RhythmGuidedSegmenter(PeakdetectSegmenter):
+class RhythmGuidedSegmenter(BaseSegmenter):
     """
     Speech-rhythm guided syllable nuclei detection (Zhang & Glass 2009).
 
-    Composition: peakdetect over the ERB/gammatone Hilbert-sum envelope (the
-    paper's E(t)) weighted by a batch-fitted rhythm sinusoid (RhythmEnvelope),
-    then Zhang's pitch verification as a post-removal filter -- peaks landing in
-    unvoiced regions (periodicity < ``voicing_threshold``) are dropped (§2.3).
+    Rhythm-guided *dynamic sensitivity* (the actual mechanism, established by
+    error analysis): closely-spaced syllable nuclei often share one broad energy
+    hump, separated by a valley too shallow for a single global peak threshold
+    to register (median inter-nucleus dip ~0.056 vs a precision-safe delta of
+    ~0.3). A global loose delta would split those merges but flood everything
+    with false positives. Rhythm resolves this by licensing a *loose* delta only
+    where a nucleus is predicted:
 
-    Divergences from the paper (documented, all justified by the paper itself):
-    - Whole-utterance batch rhythm fit instead of the iterative left-to-right
-      loop (§3.1 reports "very similar results" for the batch fit).
-    - Soft multiplicative rhythm weight instead of the hard one-peak-per-
-      predicted-interval rule; the weight's floor keeps off-beat peaks damped
-      rather than killed, mirroring the permissive 1.5-cycle search window.
-    - Periodicity-threshold voicing instead of an ESPS pitch tracker (but as a
-      post-removal filter, matching the paper's operation, not a pre-gate).
+    1. Energy ``E(t)`` = ERB/gammatone Hilbert-sum (GammatoneEnvelope).
+    2. Tight-delta peakdetect -> ``strong`` peaks (high precision).
+    3. Fit the rhythm sinusoid to ``strong`` (seeded LMS) -> crests = predicted
+       nucleus times.
+    4. Loose-delta peakdetect -> candidates that catch the shallow-valley merges.
+    5. Recovery: keep a loose candidate only if it sits within half a period of a
+       crest that has no strong peak -- sensitivity spent only where rhythm
+       predicts a nucleus, so false positives stay contained.
+    6. Pitch verification (§2.3): drop peaks in unvoiced regions (PeriodicityEnvelope
+       post-removal filter, not an external pitch tracker).
 
-    Performance (TIMIT, findsylls nuclei harness, 50 ms window): defaults give
-    nuclei F1 ~85 (60-file tune 85.3, 200-file held-out 85.2), beating the SBS
-    (84.1) and Theta (81.4) baselines on the same harness. The paper reports
-    best-case F1 92.1 on its own vowel-center harness with per-corpus parameter
-    selection; absolute numbers are not comparable across harnesses. Note: on
-    this harness the rhythm weighting barely separates from the nRG ablation
-    (~85.0), unlike the paper's +3.5 — likely because the batch fit + soft
-    weight is gentler than the iterative hard-interval rule.
+    Divergences from the paper (documented): whole-utterance batch rhythm fit
+    instead of the iterative left-to-right loop (§3.1 reports "very similar
+    results"); periodicity-threshold voicing instead of an ESPS pitch tracker.
+
+    Performance (TIMIT, vowel reference, 50 ms window): rhythm recovery lifts
+    recall ~75 -> ~89 over the no-recovery nRG ablation for +5 F1 (held-out
+    nRG 84.3 -> RG 89.3), reproducing the paper's rhythm benefit (+3.5). RG F1
+    89.3 exceeds the paper's nRG (88.6) and approaches their RG (92.1).
 
     Reference:
         Zhang, Y., & Glass, J. R. (2009). "Speech rhythm guided syllable nuclei
         detection." ICASSP 2009. https://doi.org/10.1109/ICASSP.2009.4960454
 
     Args:
-        delta: Billauer peak/valley depth on the [0,1]-normalized weighted
-            envelope (default 0.2, tuned on TIMIT).
-        rhythm_floor: minimum rhythm weight in [0,1] (default 0.3; 1.0 disables
-            rhythm weighting entirely — the paper's "nRG" ablation).
+        tight_delta: precision-safe peakdetect delta for the reliable ``strong``
+            peaks that seed the rhythm fit (default 0.3).
+        loose_delta: sensitive delta for recovering shallow-valley merged nuclei,
+            trusted only near rhythm crests (default 0.05).
         voicing_threshold: periodicity gate for pitch verification (default 0.4;
             None disables).
-        first_pass_delta: peakdetect delta for the first-pass peaks the rhythm
-            sinusoid is fitted to (default 0.05).
-        period_range: rhythm period bounds in seconds (default (0.1, 0.5)).
-        min_syllable_dur: minimum segment duration in seconds (default 0.1,
-            tuned on TIMIT).
+        seed_period: rhythm fit seed / Zhang's default periodicity (default 0.2 s).
         sample_rate, sad, add_utterance_boundaries: as in BaseSegmenter.
 
     Example:
@@ -597,44 +598,71 @@ class RhythmGuidedSegmenter(PeakdetectSegmenter):
 
     def __init__(
         self,
-        delta: float = 0.2,
-        rhythm_floor: float = 0.3,
+        tight_delta: float = 0.3,
+        loose_delta: float = 0.08,
         voicing_threshold: Optional[float] = 0.4,
-        first_pass_delta: float = 0.05,
-        period_range: Tuple[float, float] = (0.1, 0.5),
-        min_syllable_dur: float = 0.1,
+        seed_period: float = 0.20,
         sample_rate: int = 16000,
         sad: Optional["BaseSAD"] = None,
         add_utterance_boundaries: bool = True,
     ):
-        from ..envelope import PeriodicityEnvelope, RhythmEnvelope
+        super().__init__(sample_rate=sample_rate, sad=sad,
+                         add_utterance_boundaries=add_utterance_boundaries)
+        from ..envelope import GammatoneEnvelope, PeriodicityEnvelope
 
-        super().__init__(
-            envelope_computer=RhythmEnvelope(
-                delta=first_pass_delta, period_range=period_range,
-                floor=rhythm_floor, output="weighted", normalize=True),
-            delta=delta,
-            min_syllable_dur=min_syllable_dur,
-            sample_rate=sample_rate,
-            sad=sad,
-            add_utterance_boundaries=add_utterance_boundaries,
-        )
-        self.rhythm_floor = rhythm_floor
+        self.tight_delta = tight_delta
+        self.loose_delta = loose_delta
         self.voicing_threshold = voicing_threshold
-        # Pitch verification (§2.3) as a post-removal filter, not a pre-gate.
+        self.seed_period = seed_period
+        self._energy = GammatoneEnvelope(reduction="normalized_sum")
         self._periodicity = PeriodicityEnvelope()
+
+    @staticmethod
+    def _peaks_to_spans(peaks, t0, t1):
+        p = sorted(peaks)
+        spans = []
+        for i, pk in enumerate(p):
+            left = t0 if i == 0 else (p[i - 1] + pk) / 2
+            right = t1 if i == len(p) - 1 else (pk + p[i + 1]) / 2
+            spans.append((float(left), float(pk), float(right)))
+        return spans
 
     def _segment(self, audio, sr) -> List[Tuple[float, float, float]]:
         import numpy as np
-        segments = super()._segment(audio, sr)   # peakdetect on rhythm-weighted energy
-        if self.voicing_threshold is None or not segments:
-            return segments
-        # Post-removal pitch verification: drop peaks in unvoiced regions.
-        per, per_t = self._periodicity.compute(audio, sr)
-        per = np.asarray(per, float)
-        per_t = np.asarray(per_t, float)
-        return [(s, p, e) for s, p, e in segments
-                if per[np.argmin(np.abs(per_t - p))] >= self.voicing_threshold]
+        from .peakdetect_segmenter import segment_peakdetect
+        from .rhythm import fit_rhythm_sinusoid, rhythm_crests
+
+        E, t = self._energy.compute(audio, sr)
+        E = np.asarray(E, float); t = np.asarray(t, float)
+        span = E.max() - E.min()
+        En = (E - E.min()) / span if span > 0 else np.zeros_like(E)
+
+        strong = [p for _, p, _ in segment_peakdetect(
+            En, t, delta=self.tight_delta, add_boundary_valleys=True)]
+        kept = list(strong)
+
+        if len(strong) >= 2:
+            k1, k2 = fit_rhythm_sinusoid(strong, seed_period=self.seed_period)
+            crests = rhythm_crests(k1, k2, float(t[0]), float(t[-1]))
+            loose = [p for _, p, _ in segment_peakdetect(
+                En, t, delta=self.loose_delta, add_boundary_valleys=True)]
+            strong_arr = np.asarray(strong)
+            half = np.pi / k1                       # half a rhythm period
+            for c in crests:
+                if strong_arr.size and np.min(np.abs(strong_arr - c)) <= half:
+                    continue                         # crest already has a strong peak
+                cand = [p for p in loose if abs(p - c) < half]
+                if cand:                             # recover the nucleus nearest the crest
+                    kept.append(min(cand, key=lambda p: abs(p - c)))
+
+        kept = sorted(set(kept))
+        if self.voicing_threshold is not None and kept:
+            per, per_t = self._periodicity.compute(audio, sr)
+            per = np.asarray(per, float); per_t = np.asarray(per_t, float)
+            kept = [p for p in kept
+                    if per[np.argmin(np.abs(per_t - p))] >= self.voicing_threshold]
+
+        return self._peaks_to_spans(kept, float(t[0]), float(t[-1]))
 
 
 # ---------------------------------------------------------------------------

@@ -16,7 +16,6 @@ from .local_cosine import LocalCosineEnvelope
 from .mincut import MinCutEnvelope
 from .periodicity import PeriodicityEnvelope
 from .gammatone import GammatoneEnvelope
-from .rhythm import RhythmEnvelope
 import numpy as np
 from ..features import get_extractor
 
@@ -65,7 +64,6 @@ def get_envelope_computer(method: str = "sbs", **kwargs) -> EnvelopeComputer:
             - 'gammatone': ERB/gammatone auditory filterbank envelope
             - 'theta': Theta oscillator (built on the gammatone filterbank)
             - 'periodicity': normalized-autocorrelation periodicity (Xie & Niyogi 2006)
-            - 'rhythm': rhythm-weighted ERB envelope (Zhang & Glass 2009)
             - 'cls_attention': CLS-attention pseudo-envelope
             - 'greedy_cosine': Greedy-cosine pseudo-envelope
             - 'mincut': MinCut pseudo-envelope
@@ -113,14 +111,12 @@ def get_envelope_computer(method: str = "sbs", **kwargs) -> EnvelopeComputer:
         return PeriodicityEnvelope(**kwargs)
     elif method == "gammatone":
         return GammatoneEnvelope(**kwargs)
-    elif method == "rhythm":
-        return RhythmEnvelope(**kwargs)
     else:
         raise ValueError(
             f"Unsupported envelope method: {method}. "
             f"Available: 'rms', 'hilbert', 'lowpass', 'sbs', 'theta', "
             f"'cls_attention', 'greedy_cosine', 'mincut', 'periodicity', "
-            f"'gammatone', 'rhythm'"
+            f"'gammatone'"
         )
 
 
@@ -174,7 +170,5 @@ def get_amplitude_envelope(waveform: np.ndarray, sr: int, method: str = "sbs", *
         return PeriodicityEnvelope(**kwargs).compute(waveform, sr)
     elif method == "gammatone":
         return GammatoneEnvelope(**kwargs).compute(waveform, sr)
-    elif method == "rhythm":
-        return RhythmEnvelope(**kwargs).compute(waveform, sr)
     else:
         raise ValueError(f"Unsupported envelope method: {method}")

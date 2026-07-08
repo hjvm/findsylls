@@ -22,6 +22,7 @@ from .threshold import (
     segment_threshold,
     ThresholdSegmenter,
 )
+from .rhythm import fit_rhythm_sinusoid, rhythm_crests
 from .mincut import (
     MinCutSegmenter,
     min_cut,
@@ -69,6 +70,8 @@ __all__ = [
     "ConvexHullSegmenter",
     "segment_threshold",
     "ThresholdSegmenter",
+    "fit_rhythm_sinusoid",
+    "rhythm_crests",
     # Feature-based (Phase 5)
     "MinCutSegmenter",
     "GreedyCosineSegmenter",

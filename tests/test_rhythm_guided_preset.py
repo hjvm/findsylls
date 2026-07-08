@@ -42,17 +42,15 @@ def test_voicing_gate_suppresses_unvoiced_nuclei(audio):
         assert penv[np.argmin(np.abs(ptimes - p))] >= 0.4
 
 
-def test_rhythm_ablation_changes_output(audio):
-    """rhythm_floor=1.0 (the paper's nRG) must differ from the rhythm-guided
-    run — proving the rhythm weight actually participates."""
+def test_rhythm_recovery_adds_nuclei(audio):
+    """Rhythm-guided recovery (loose_delta << tight_delta) must recover merged
+    nuclei — i.e. detect at least as many as the tight-only (nRG) baseline. With
+    loose==tight there is nothing to recover, so counts match."""
     a, sr = audio
-    rg = RhythmGuidedSegmenter(rhythm_floor=0.3).segment(a, sr)
-    nrg = RhythmGuidedSegmenter(rhythm_floor=1.0).segment(a, sr)
-    rg_peaks = np.array([p for _, p, _ in rg])
-    nrg_peaks = np.array([p for _, p, _ in nrg])
-    assert rg_peaks.size != nrg_peaks.size or not np.allclose(
-        np.sort(rg_peaks), np.sort(nrg_peaks)
-    )
+    rg = RhythmGuidedSegmenter(tight_delta=0.3, loose_delta=0.05).segment(a, sr)
+    nrg = RhythmGuidedSegmenter(tight_delta=0.3, loose_delta=0.3).segment(a, sr)
+    assert len(rg) >= len(nrg)
+    assert len(rg) > len(nrg)   # on this utterance recovery finds merged nuclei
 
 
 def test_reference_and_cite(capsys):
