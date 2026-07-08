@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- `EnergyPeriodicitySegmenter` — Xie & Niyogi (2006) two-stage syllable-nucleus
+  detector (periodicity gates voiced regions; energy convex-hull picks nuclei).
+- `RhythmGuidedSegmenter` — Zhang & Glass (2009) rhythm-guided nucleus detection,
+  rebuilt around rhythm-licensed dynamic peak sensitivity (recovers closely-spaced
+  merged nuclei).
+- `PeriodicityEnvelope` — normalized-autocorrelation periodicity (Xie & Niyogi),
+  dispatch method `periodicity`.
+- `GammatoneEnvelope` — the ERB/gammatone filterbank promoted from a theta-internal
+  step to a first-class envelope (`.filterbank()` multi-band, `.compute()` 1-D
+  reduction), dispatch method `gammatone`.
+- `convexhull` and `threshold` segmentation methods: `segment_convexhull` /
+  `ConvexHullSegmenter` (Mermelstein) and `segment_threshold` / `ThresholdSegmenter`
+  (regions above a threshold, with a dense `.mask()` view).
+- `fit_rhythm_sinusoid` and `rhythm_crests` rhythm primitives (`segmentation/rhythm.py`).
+- `RMSEnvelope` gains `db` / `reference` (relevant energy, dB below max) and `center`
+  (frame alignment) options.
+
+### Fixed
+- `VOWELS` constant was missing the TIMIT vowels `ux`, `axr`, `ax-h`, which
+  undercounted the reference vowel set in nuclei evaluation.
+
+### Removed (breaking)
+- `ProductEnvelope`, `ThresholdGate` (multiplicative-gating helpers — no longer used;
+  compositions use `ThresholdSegmenter` masks / numpy directly).
+- `RhythmEnvelope` and the `rhythm` **envelope** dispatch method (rhythm operates on
+  peak trains, not audio — its math moved to `segmentation/rhythm.py`).
+- `RegionGatedSegmenter` (redundant orchestrator; two-stage logic lives in the presets).
+- `RhythmGuidedSegmenter` constructor changed: `delta`/`rhythm_floor`/`first_pass_delta`/
+  `period_range` replaced by `tight_delta`/`loose_delta`/`seed_period`.
+
 ## [3.2.0] - 2026-06-03
 
 > Consolidates unreleased work since 3.0.1 (the 3.0.2 / 3.1.x series was
